@@ -7,6 +7,8 @@ Custom ImageJ macro and R scripts used in Kelliher et al 2022
 
 A sample dataset is included: "2020-06-05_run 2020 June 12 03_17_19 150.spe"
 
+Please download the input data file from Google Drive: https://drive.google.com/drive/folders/1hdB1eWsTfNJr_K98bRY17Umur4HA5NPJ?usp=sharing
+
     Experiment strain # 1785-1: Neurospora crassa OR74A, FGSC2489, csr-1::frqCBoxp-luciferase::barR
     Experiment date: 2020-06-05 to 2020-06-12
     Experiment temperature: 24.9 +/- 0.4 C
