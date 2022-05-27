@@ -1,0 +1,153 @@
+macro "Race Tube Analysis Tool -  C000D0aD1cD34D37D39D3aD3cD48D4cD57D64D67D69D6aD6cD74D76D7aD9cDa4DacDb6Db7Db8Db9DdcDe9C000D1bD36D44D47D59D77D7cD8cDbcDd4DdbC000D2cD35D38D5cD75Db4Db5Dc4C000D09DbaDeaC000D54D94DccC000C111C222C333C444C555C666C777C888C999CaaaCbbbCcccCdddCeeeCfffD19CfffD4dCfffD13DeeCfffD24D5aDb3Dd1DebCfffD12D21D3bD8aDbdDceDd5DddDe4CfffD05D16D25D28D2bD2fD45D53D55D5eD62D72D7dD93D95D9dD9fDb0DbbDc6DcaDd0Dd6DedDf2Df6DffCfffD03D1dD27D2eD30D40D41D42D43D46D51D60D68D6bD70D78D7eD87D89D8fD90D96D98Da6DaaDaeDc1DcbDcdDcfDd3DdaDe1De2De7Df0CfffD00D01D02D04D06D07D08D0bD0cD0dD0eD0fD10D11D14D15D17D18D1aD1eD1fD20D22D23D26D29D2aD2dD31D32D33D3dD3eD3fD49D4aD4bD4eD4fD50D52D56D58D5bD5dD5fD61D63D65D66D6dD6eD6fD71D73D79D7bD7fD80D81D82D83D84D85D86D88D8bD8dD8eD91D92D97D99D9aD9bD9eDa0Da1Da2Da3Da5Da7Da8Da9DabDadDafDb1Db2DbeDbfDc0Dc2Dc3Dc5Dc7Dc8Dc9Dd2Dd7Dd8Dd9DdeDdfDe0De3De5De6De8DecDefDf1Df3Df4Df5Df7Df8Df9DfaDfbDfcDfdDfe"{
+// 2019-08-22 modified from "Toolset Image Analysis Larrondo's Lab 1.0" race tube code
+// Note 1: horizontal orientation for RTs is assumed here
+// Note 2: frames used in this macro will start at #1 in the stack and go until the user input frame #
+// Note 2 cont: use the frame # where the growth front hits the end of the camera area for best results
+
+
+run("Set Measurements...", "area mean min stack redirect=None decimal=0");
+run("Clear Results");
+setSlice(1);
+roiManager("Reset");
+roiManager("Show all");
+// frames = getNumber("Frames: ", frames);
+divisions = getNumber("How many total frames do you want to use in your analysis?:", divisions);
+// added by CMK to replace "frames" prompt
+percentage = getNumber("What fraction of total tissue do you want to use as the growth front width (e.g. try 1, 3, 10)?:", percentage);
+// added by CMK, new prompt
+conh();
+
+	
+function conh() {
+	Testh(divisions);
+	do{
+	ans2 = getString("Do you want to use this configuration for your analysis? (Y= Yes, N= No)","");
+	if (ans2=="y"){
+		RaceTube(divisions,percentage);
+	} else if(ans2=="n"){
+		Testh(divisions);
+	}
+	} while(ans2=="n");
+}
+
+
+function Testh(divisions) {
+	roiManager("Reset");
+	IJ.deleteRows(0,3);
+	setTool("point");
+	waitForUser("Select the top left corner of your race tube");
+	roiManager("add");
+	waitForUser("Select the top right corner of your race tube");
+	roiManager("add");
+	waitForUser("Select the bottom left corner of your race tube");
+	roiManager("add");
+	waitForUser("Select the growth front of your race tube from Frame #1");
+	roiManager("add");
+	// previous 2 lines added by CMK
+	roiManager("measure");
+	x1 = getResult("X",0);
+	y1 = getResult("Y",0);
+	x2 = getResult("X",1);
+	y2 = getResult("Y",1);
+	x3 = getResult("X",2);
+	y3 = getResult("Y",2);
+	x4 = getResult("X",3);
+	roiManager("reset");
+	for(a=0;a<divisions;a++){
+		makePolygon(x1, y1, x2, y1, x2, y3, x3, y3);
+		roiManager("add");
+	}
+}
+
+
+function RaceTube(divisions,percentage){	
+	makePoint(6,4);
+	imga=getTitle();
+	run("Duplicate...","title=[RaceTube Quantification Config.tiff]");
+	selectImage("RaceTube Quantification Config.tiff");
+	setForegroundColor(255,0,0);
+	roiManager("Draw");
+	ans= getString("Would you like to save your configuration?(Y=Yes, N=No)","");
+	if (ans=="y"){
+		saveAs("tiff");
+		run("Close");
+	}else if (ans=="n"){
+		run("Close");
+		}
+	selectImage(imga);
+	x1 = getResult("X",0);
+	y1 = getResult("Y",0);
+	x2 = getResult("X",1);
+	y2 = getResult("Y",1);
+	x3 = getResult("X",2);
+	y3 = getResult("Y",2);
+	x4 = getResult("X",3);
+	growthFrontWidth = x2 / percentage;
+	// user inputs the width of the growth front to use
+	// this math scales the growth front width by total growth width
+	// Example: whole tube growth = 1023 div 10 = 102.3 units of tissue to quant
+	rateOfGrowth = (x2 - x4) / divisions;
+	// x2 is max growth, x4 is starting front, divisions is # frames included
+	// this math assumes a uniform linear growth rate
+	// CAVEAT: Neurospora doesn't grow uniformly with DD time OR with time since inoculation OR by mutant!!
+	// Hack solution for this script: ensure "growth front width" is wide enough to capture the newer section of tissue
+	IJ.deleteRows(0,3);
+	roiManager("reset");
+	for(a=0; a<divisions; a++){
+		makePolygon((x4 - growthFrontWidth) + (rateOfGrowth*a), y1, x4 + (rateOfGrowth*a), y1, x4 + (rateOfGrowth*a), y3, (x4 - growthFrontWidth) + (rateOfGrowth*a), y3);
+		// polygon coordinates are drawn from top left -> top right -> bot right -> bot left
+		roiManager("add");
+		roiManager("Measure");
+		roiManager("reset");
+		wait(100);
+		// delay added by CMK to allow user to watch growth front quant
+		run("Next Slice [>]");
+	}
+	
+	setSlice(1);
+	setTool("rectangle");
+	waitForUser("Select the background sector and press OK");
+	for (b=0; b<divisions; b++) {
+		run("Measure");
+		run("Next Slice [>]");
+	}
+
+setSlice(1);
+}	
+
+	
+ans3 = getString("Would you like to see the saturated wells? (y= Yes, n= No)","");
+if (ans3=="y"){;
+	Satu();
+} else if (ans3=="n"){;
+	ans4= getString("Would you like to save your measurements? (y= Yes, n= No)","");
+	if (ans4=="y"){;
+		saveAs("measurements");
+		run("Set Measurements...", "area mean min stack redirect=None decimal=3");
+	} else if(ans4=="n"){;
+		run("Set Measurements...", "area mean min stack redirect=None decimal=3");
+	}
+}
+
+
+function Satu(){
+	resetMinAndMax();
+	getLut(reds, greens, blues);
+	for (i=133; i<256; i++) {;
+		reds[i] = 255;
+		greens[i] = 0;
+		blues[i] = 0;
+	}
+	setLut(reds, greens, blues);
+	ans3= getString("Would you like to save your measurements? (y= Yes, n= No)","");
+	if (ans3=="y"){;
+		saveAs("measurements");
+		run("Set Measurements...", "area mean min stack redirect=None decimal=3");
+	} else if(ans3=="n"){;
+		run("Set Measurements...", "area mean min stack redirect=None decimal=3");
+	}
+	showMessage("You can turn saturation highlight OFF running Reset LUT Macro");
+}
+
+
+}

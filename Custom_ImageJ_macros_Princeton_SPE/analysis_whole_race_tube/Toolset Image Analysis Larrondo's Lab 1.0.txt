@@ -1,0 +1,418 @@
+macro "96 well plate quantifying Tool - C000D05D07D09D0aD14D1bD23D2cD2dD35D36D41D4eD50D54D57D66D67D68D6aD6bD70D7fD8fD90D95D97D98D99D9aD9fDaeDb8Dc9Dd2DddDe4De5DeaDf6Df8C000D06D08D3dD5eD80Da0Da8DbbDc2DcaDf7C000D22D47D6fD94DabDb1C000D32D60C000D44D69DbeDcdDd3DdcDf9C000D65C000DebC000D96C000C111C222C333C444C555C666C777C888C999CaaaCbbbCcccCdddCeeeCfffDceCfffD61D75D9cDc4CfffD2aD4bD55D5dD64Da5DdbDecDfaCfffD1cD43D49D73D93Db6DbdDbfDccDd8De6CfffD12D17D37D38D3bD42D46D4dD5fD62D7dD82D86D8dDa4DacDadDb0Db2Db3DcbDd7De3De9CfffD01D02D0eD15D18D1eD2eD31D33D3fD40D59D5aD77D79D85D87D88Da1Da6Db9DbaDc1Dd0Dd5De0De1DedDefCfffD00D03D04D0bD0cD0dD0fD10D11D13D16D19D1aD1dD1fD20D21D24D25D26D27D28D29D2bD2fD30D34D39D3aD3cD3eD45D48D4aD4cD4fD51D52D53D56D58D5bD5cD63D6cD6dD6eD71D72D74D76D78D7aD7bD7cD7eD81D83D84D89D8aD8bD8cD8eD91D92D9bD9dD9eDa2Da3Da7Da9DaaDafDb4Db5Db7DbcDc0Dc3Dc5Dc6Dc7Dc8DcfDd1Dd4Dd6Dd9DdaDdeDdfDe2De7De8DeeDf0Df1Df2Df3Df4Df5DfbDfcDfdDfeDff"{
+run("Set Measurements...", "area mean min stack redirect=None decimal=0");
+run("Clear Results");
+setSlice(1);
+roiManager("Reset");
+roiManager("Show all");
+frames = getNumber("Frames: ",frames);
+radius = getNumber("Circle Radius: ", 11);
+Test(radius);
+do{
+ans = getString("Would you like to use this configuration for your plate? (Y= Yes, N= No)","");
+if (ans=="y"){
+	Placa962(frames,radius);
+}else if(ans=="n"){
+	Test(radius);
+	}
+ }while(ans=="n")		
+
+function Test (radius) {	
+	IJ.deleteRows(0,3);
+	roiManager("reset");
+	setTool("point");
+	waitForUser("Select center of well: \n A01");
+	roiManager("add");
+	setTool("point");
+	waitForUser("Select center of well: \n A12");
+	roiManager("add");
+	setTool("point");
+	waitForUser("Select center of well: \n H01");
+	roiManager("add");
+	setTool("point");
+	waitForUser("Select center of well: \n H12");
+	roiManager("add");
+	roiManager("measure");
+	x1 = getResult("X",0);
+	x2 = getResult("X",1);
+	x3 = getResult("X",2);
+	y1 = getResult("Y",0);
+	y2 = getResult("Y",1);
+	y3 = getResult("Y",2);
+	deltax = (x2-x1)/11;
+	deltay = (y2-y1)/11;
+	deltax2 = (x1-x3)/7;
+	deltay2 = (y3-y1)/7;
+	roiManager("reset");
+	for (a=0; a<8; a++) {
+			for (i=0; i<12; i++) {
+				makeOval((x1-deltax2*a-radius)+(deltax*i), (y1+deltay2*a-radius)+(deltay*i), radius*2, radius*2);
+				roiManager("Add");
+		}
+   	    }
+}
+function Placa962 (frames,radius) {
+	makePoint(6,4);
+	imga=getTitle();
+	run("Duplicate...","title=[96 well Plate Quantification Config.tiff]");
+	selectImage("96 well Plate Quantification Config.tiff");
+	setForegroundColor(255,0,0);
+	roiManager("Draw");
+	ans= getString("Would you like to save your configuration?(y=Yes, n=No)","");
+	if(ans=="y"){;
+		saveAs("tiff");
+		run("Close");
+	}else if(ans=="n"){;
+		run("Close");
+		}
+	selectImage(imga);
+	x1 = getResult("X",0);
+	x2 = getResult("X",1);
+	x3 = getResult("X",2);
+	y1 = getResult("Y",0);
+	y2 = getResult("Y",1);
+	y3 = getResult("Y",2);
+	deltax = (x2-x1)/11;
+	deltay = (y2-y1)/11;
+	deltax2 = (x1-x3)/7;
+	deltay2 = (y3-y1)/7;
+	IJ.deleteRows(0,3);
+	roiManager("reset");
+	for (b=0; b<frames; b++) {
+		for (a=0; a<8; a++) {
+			for (i=0; i<12; i++) {
+				makeOval((x1-deltax2*a-radius)+(deltax*i), (y1+deltay2*a-radius)+(deltay*i), radius*2, radius*2);
+				roiManager("Add");
+		}
+   	    }
+		roiManager("Measure");
+		roiManager("reset");
+		run("Next Slice [>]");
+	}
+	 setSlice(1);
+	setTool("rectangle");
+	waitForUser("Select the background zone and press OK");
+	for (b=0; b<frames; b++) {
+		run("Measure");
+		run("Next Slice [>]");
+		}
+	setSlice(1);
+		}
+ans2 = getString("Would you like to highlight the saturated wells? (y= Yes, n= No)","");
+if (ans2=="y"){;
+	Satu();
+}else if (ans2=="n"){;
+	ans3= getString("Would you like to save your measurements? (y= Yes, n= No)","");
+	if (ans3=="y"){;
+		saveAs("measurements");
+		run("Set Measurements...", "area mean min stack redirect=None decimal=3");
+	}else if(ans3=="n"){;
+		run("Set Measurements...", "area mean min stack redirect=None decimal=3");
+		}
+	}
+function Satu(){
+	resetMinAndMax();
+	getLut(reds, greens, blues);
+    	for (i=133; i<256; i++) {;
+    	    reds[i] = 255;
+    	    greens[i] = 0;
+    	    blues[i] = 0;
+    	}
+    	setLut(reds, greens, blues);
+	
+	ans3= getString("Would you like to save your measurements? (y= Yes, n= No)","");
+	if (ans3=="y"){;
+		saveAs("measurements");
+		run("Set Measurements...", "area mean min stack redirect=None decimal=3");
+	}else if(ans3=="n"){;
+		run("Set Measurements...", "area mean min stack redirect=None decimal=3");
+		}
+	showMessage("You can turn saturation highlight OFF running Reset LUT Macro");
+     }
+
+  }
+ }
+macro "Race Tube Analysis Tool -  C000D0aD1cD34D37D39D3aD3cD48D4cD57D64D67D69D6aD6cD74D76D7aD9cDa4DacDb6Db7Db8Db9DdcDe9C000D1bD36D44D47D59D77D7cD8cDbcDd4DdbC000D2cD35D38D5cD75Db4Db5Dc4C000D09DbaDeaC000D54D94DccC000C111C222C333C444C555C666C777C888C999CaaaCbbbCcccCdddCeeeCfffD19CfffD4dCfffD13DeeCfffD24D5aDb3Dd1DebCfffD12D21D3bD8aDbdDceDd5DddDe4CfffD05D16D25D28D2bD2fD45D53D55D5eD62D72D7dD93D95D9dD9fDb0DbbDc6DcaDd0Dd6DedDf2Df6DffCfffD03D1dD27D2eD30D40D41D42D43D46D51D60D68D6bD70D78D7eD87D89D8fD90D96D98Da6DaaDaeDc1DcbDcdDcfDd3DdaDe1De2De7Df0CfffD00D01D02D04D06D07D08D0bD0cD0dD0eD0fD10D11D14D15D17D18D1aD1eD1fD20D22D23D26D29D2aD2dD31D32D33D3dD3eD3fD49D4aD4bD4eD4fD50D52D56D58D5bD5dD5fD61D63D65D66D6dD6eD6fD71D73D79D7bD7fD80D81D82D83D84D85D86D88D8bD8dD8eD91D92D97D99D9aD9bD9eDa0Da1Da2Da3Da5Da7Da8Da9DabDadDafDb1Db2DbeDbfDc0Dc2Dc3Dc5Dc7Dc8Dc9Dd2Dd7Dd8Dd9DdeDdfDe0De3De5De6De8DecDefDf1Df3Df4Df5Df7Df8Df9DfaDfbDfcDfdDfe"{
+run("Set Measurements...", "area mean min stack redirect=None decimal=0");
+run("Clear Results");
+setSlice(1);
+roiManager("Reset");
+roiManager("Show all");
+frames = getNumber("Frames: ", frames);
+divisions = getNumber("How many division do you want to use in your analysis?:",40);
+ans = getString("Is your racce tube in horizontal (h) or vertical(v) position?:","h");
+if (ans=="h"){
+	conh();
+}else if (ans=="v"){
+	conv();
+}
+function conv() {
+Testv(frames);
+do{
+ans2 = getString("Do you want to use this configuration for your analysis? (y= Yes, n= No)","");
+if (ans2=="y"){
+	RaceTube(frames,divisions);
+}else if(ans2=="n"){
+	Testv(frames);
+	}
+ }while(ans2=="n")
+}	
+function conh() {
+Testh(frames);
+do{
+ans2 = getString("Do you want to use this configuration for your analysis? (Y= Yes, N= No)","");
+if (ans2=="y"){
+	RaceTube(frames,divisions);
+}else if(ans2=="n"){
+	Testh(frames);
+	}
+ }while(ans2=="n")
+}	
+function Testh(frames) {
+	roiManager("Reset");
+	IJ.deleteRows(0,3);
+	setTool("point");
+	waitForUser("Select the top left corner of your race tube");
+	roiManager("add");
+	setTool("point");
+	waitForUser("Select the top right corner of your race tube");
+	roiManager("add");
+	waitForUser("Select the bottom left corner of your race tube");
+	roiManager("add");
+	roiManager("measure");
+	x1 = getResult("X",0);
+	y1 = getResult("Y",0);
+	x2 = getResult("X",1);
+	y2 = getResult("Y",1);
+	x3 = getResult("X",2);
+	y3 = getResult("Y",2);
+	deltax = (x2-x1)/divisions;
+	deltay = (y2-y1)/divisions;
+	roiManager("reset");
+	for(a=0;a<divisions;a++){
+		makePolygon(x1+deltax*a, y1+deltay*a, x1+deltax*a+deltax, y1+deltay*a+deltay, x3+deltax*a+deltax, y3+deltay*a+deltay, x3+deltax*a, y3+deltay*a);
+		roiManager("add");
+		}
+}
+function Testv(frames) {
+	roiManager("Reset");
+	IJ.deleteRows(0,3);
+	setTool("point");
+	waitForUser("Select the top right corner of your race tube");
+	roiManager("add");
+	setTool("point");
+	waitForUser("Select the bottom right corner of your race tube");
+	roiManager("add");
+	waitForUser("Select the top left corner of your race tube");
+	roiManager("add");
+	roiManager("measure");
+	x1 = getResult("X",0);
+	y1 = getResult("Y",0);
+	x2 = getResult("X",1);
+	y2 = getResult("Y",1);
+	x3 = getResult("X",2);
+	y3 = getResult("Y",2);
+	deltax = (x2-x1)/divisions;
+	deltay = (y2-y1)/divisions;
+	roiManager("reset");
+	for(a=0;a<divisions;a++){
+		makePolygon(x1+deltax*a, y1+deltay*a, x1+deltax*a+deltax, y1+deltay*a+deltay, x3+deltax*a+deltax, y3+deltay*a+deltay, x3+deltax*a, y3+deltay*a);
+		roiManager("add");
+		}
+}
+function RaceTube(frames, divisions){	
+	makePoint(6,4);
+	imga=getTitle();
+	run("Duplicate...","title=[RaceTube Quantification Config.tiff]");
+	selectImage("RaceTube Quantification Config.tiff");
+	setForegroundColor(255,0,0);
+	roiManager("Draw");
+	ans= getString("Would you like to save your configuration?(Y=Yes, N=No)","");
+	if (ans=="y"){
+		saveAs("tiff");
+		run("Close");
+	}else if (ans=="n"){
+		run("Close");
+		}
+	selectImage(imga);
+	x1 = getResult("X",0);
+	y1 = getResult("Y",0);
+	x2 = getResult("X",1);
+	y2 = getResult("Y",1);
+	x3 = getResult("X",2);
+	y3 = getResult("Y",2);
+	deltax = (x2-x1)/divisions;
+	deltay = (y2-y1)/divisions;
+	IJ.deleteRows(0,3);
+	roiManager("reset");
+	for (b=0; b<frames; b++) {
+		for(a=0;a<divisions;a++){
+			makePolygon(x1+deltax*a, y1+deltay*a, x1+deltax*a+deltax, y1+deltay*a+deltay, x3+deltax*a+deltax, y3+deltay*a+deltay, x3+deltax*a, y3+deltay*a);
+			roiManager("add");
+			}
+		roiManager("Measure");
+		roiManager("reset");
+		run("Next Slice [>]");
+		}
+	setSlice(1);
+	setTool("rectangle");
+	waitForUser("Select the background sector and press OK");
+	for (b=0; b<frames; b++) {
+		run("Measure");
+		run("Next Slice [>]");
+		}
+	setSlice(1);
+	}
+ans3 = getString("Would you like to see the saturated wells? (y= Yes, n= No)","");
+if (ans3=="y"){;
+	Satu();
+}else if (ans3=="n"){;
+	ans4= getString("Would you like to save your measurements? (y= Yes, n= No)","");
+	if (ans4=="y"){;
+		saveAs("measurements");
+		run("Set Measurements...", "area mean min stack redirect=None decimal=3");
+	}else if(ans4=="n"){;
+		run("Set Measurements...", "area mean min stack redirect=None decimal=3");
+		}
+	}
+function Satu(){
+	resetMinAndMax();
+	getLut(reds, greens, blues);
+    	for (i=133; i<256; i++) {;
+    	    reds[i] = 255;
+    	    greens[i] = 0;
+    	    blues[i] = 0;
+    	}
+    	setLut(reds, greens, blues);
+	ans3= getString("Would you like to save your measurements? (y= Yes, n= No)","");
+	if (ans3=="y"){;
+		saveAs("measurements");
+		run("Set Measurements...", "area mean min stack redirect=None decimal=3");
+	}else if(ans3=="n"){;
+		run("Set Measurements...", "area mean min stack redirect=None decimal=3");
+		}
+	showMessage("You can turn saturation highlight OFF running Reset LUT Macro");
+     }
+  }
+ }
+macro "PetriDish Analysis Tool - C000D06D07D08D0aD1bD23D27D28D2cD2dD32D35D3bD3dD41D43D47D4cD4eD50D53D60D62D64D67D6bD6dD74D76D7fD80D86D89D8bD8dD9bD9dD9fDa0Da5DaaDacDaeDb1Db3Db6Db8Db9DbeDc2Dc4DcaDcbDd7Dd9DdcDe5DeaDebDf6Df7Df8C000D34D48D49D55D5eD68D6fD70D72D84D8fD92D98Db7Dd3Dd8DddDf9C000D09D29D46D5cD79D7bD7dD90Da3DbcDcdDd2De4C000D05D22D3aD5aD82D94D97Dc5Dd6C000D14D26C000C111C222C333C444C555C666C777C888C999CaaaCbbbCcccCdddCeeeCfffD21CfffD59De3DedCfffD69D93Da7Db5CfffD04D13D15D56D5fDc0Dd5De0CfffD0dD2fD39D3eD5bD5dD8eD91D9cDabDccDdfDf1Df4CfffD02D0eD12D16D1aD25D2aD31D38D45D4fD51D63D71D78D7eD83D87D95Da1DbdDcfDeeDfaDfcDffCfffD00D01D03D0bD0cD0fD10D11D17D18D19D1cD1dD1eD1fD20D24D2bD2eD30D33D36D37D3cD3fD40D42D44D4aD4bD4dD52D54D57D58D61D65D66D6aD6cD6eD73D75D77D7aD7cD81D85D88D8aD8cD96D99D9aD9eDa2Da4Da6Da8Da9DadDafDb0Db2Db4DbaDbbDbfDc1Dc3Dc6Dc7Dc8Dc9DceDd0Dd1Dd4DdaDdbDdeDe1De2De6De7De8De9DecDefDf0Df2Df3Df5DfbDfdDfe"{
+run("Set Measurements...", "area mean min stack redirect=None decimal=0")
+run("Clear Results");
+setSlice(1);
+roiManager("Reset");
+roiManager("Show all");
+frames = getNumber("Frames: ", frames);
+Testc(frames);
+do{
+ans2 = getString("Do you want to use this configuration for your analysis? (y= Yes, n= No)","");
+if (ans2=="y"){
+	Circle(frames);
+}else if(ans2=="n"){
+	Testc(frames);
+	}
+ }while(ans2=="n")
+function Testc(frames){
+	roiManager("Reset");
+	setTool("point");
+	waitForUser("Select the center of the plate and press OK");
+	roiManager("add");
+	setTool("point");
+	waitForUser("Select the border of the plate in the Y axis and press OK");
+	roiManager("add");
+	roiManager("measure");
+	y1 = getResult("Y",0);
+	y2 = getResult("Y",1);
+	x1 = getResult("X",0);
+	x2 = getResult("X",1);
+	radius = 2;
+	deltay = (y1-y2)/40;
+	roiManager("reset");	
+	for(a=0; a<40;a++){;
+			makeOval(x1-(radius+deltay*a),y1-(radius+deltay*a), (radius+deltay*a)*2, (radius+deltay*a)*2);
+			roiManager("add");
+			};
+	}
+function Circle(frames) {
+	makePoint(6,4);
+	imga=getTitle();
+	run("Duplicate...","title=[PetriDish Quantification Config.tiff]");
+	selectImage("PetriDish Quantification Config.tiff");
+	setForegroundColor(255,0,0);
+	roiManager("Draw");
+	ans= getString("Would you like to save your configuration?(Y=Yes, N=No)","");
+	if (ans=="y"){
+		saveAs("tiff");
+		run("Close");
+	}else if (ans=="n"){
+		run("Close");
+		}
+	selectImage(imga);
+	y1 = getResult("Y",0);
+	y2 = getResult("Y",1);
+	x1 = getResult("X",0);
+	x2 = getResult("X",1);
+	radius = 2;
+	deltay = (y1-y2)/40;
+	IJ.deleteRows(0,1);
+	roiManager("reset");
+	for(b=0; b<frames;b++){;	
+		for(a=0; a<40;a++){;
+			makeOval(x1-(radius+deltay*a),y1-(radius+deltay*a), (radius+deltay*a)*2, (radius+deltay*a)*2);
+			roiManager("add");
+			};
+		roiManager("Measure");
+		roiManager("reset");
+		run("Next Slice [>]");
+		}
+	setSlice(1);
+		}
+	setTool("rectangle");
+	waitForUser("Select the background sector and press OK");
+	for (b=0; b<frames; b++) {
+		run("Measure");
+		run("Next Slice [>]");
+		}
+	setSlice(1);
+	ans3 = getString("Would you like to see the saturated wells? (y= Yes, n= No)","");
+if (ans3=="y"){;
+	Satu();
+}else if (ans3=="n"){;
+	ans4= getString("Would you like to save your measurements? (y= Yes, n= No)","");
+	if (ans4=="y"){;
+		saveAs("measurements");
+		run("Set Measurements...", "area mean min stack redirect=None decimal=3");
+	}else if(ans4=="n"){;
+		run("Set Measurements...", "area mean min stack redirect=None decimal=3");
+		}
+	}
+function Satu(){
+	resetMinAndMax();
+	getLut(reds, greens, blues);
+    	for (i=133; i<256; i++) {;
+    	    reds[i] = 255;
+    	    greens[i] = 0;
+    	    blues[i] = 0;
+    	}
+    	setLut(reds, greens, blues);
+	ans5= getString("Would you like to save your measurements? (y= Yes, n= No)","");
+	if (ans5=="y"){;
+		saveAs("measurements");
+		run("Set Measurements...", "area mean min stack redirect=None decimal=3");
+	}else if(ans5=="n"){;
+		run("Set Measurements...", "area mean min stack redirect=None decimal=3");
+		}
+	showMessage("You can turn saturation highlight OFF running Reset LUT Macro");
+     }
+  }
+ }
+macro "Reset LUT" {
+    reds = newArray(256);
+    greens = newArray(256); 
+    blues = newArray(256);
+    for (i=0; i<256; i++) {
+        reds[i] = i;
+        greens[i] = i;
+        blues[i] = i;
+    }
+    setLut(reds, greens, blues);
+}
+
