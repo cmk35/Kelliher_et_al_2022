@@ -1,7 +1,7 @@
 # Kelliher_et_al_2022
 Custom ImageJ macro and R scripts used in Kelliher et al 2022
 
-### This code is associated with the 2022 manuscript: "A role for gene expression and mRNA stability in nutritional compensation of the circadian clock". 
+### This code is associated with the 2022/2023 manuscript: "Nutritional compensation of the circadian clock is a conserved process influenced by gene expression regulation and mRNA stability".
 
 pubmed link: https://pubmed.ncbi.nlm.nih.gov/36603054/
 
