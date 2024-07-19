@@ -1,0 +1,193 @@
+---
+title: "3' End Sequencing Part 2: Normalize HTSeq-counts by library size; determine differential gene expression among key genes (Figure 4D)"
+author: "Tina Kelliher"
+date: "5/27/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+```
+
+## Read in the file containing data
+
+Data type: Lexogen QuantSeq REV 3' End RNA-Sequencing; 75 bp SE stranded reads
+
+Raw data availability: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE201901
+
+Experimental strains: cspf5 cpsf6 double mutant & control
+
+Experimental conditions: 25C LL; 72 hours growth; 0.25% glucose w/v + 0.17% arginine w/v medium
+
+Experimental dates: 9/23/21 & 9/30/21 (N = 2 biological replicates per strain)
+
+Full data pipeline: see Materials & Methods of manuscript
+
+Data input to this script: HTSeq-count output files; Lexogen QuantSeq REV library preparation generates only 1 sequencing read per mRNA transcript at the immediate 3' end; read counting is a suitable proxy for gene expression quantification between mutant and control
+
+HTSeq-count was downloaded by CMK from the Bioconda library using Anaconda's Python distribution (version 0.11.3)
+
+HTSeq-count was implemented via the command line as part of an RNA-Seq analysis pipeline (input files are mapped BAM files for each 3' end sequencing experiment):
+
+run_pipeline()
+
+> for FILE in `ls`
+
+> do
+
+> htseq-count --format=bam --order=pos --stranded=reverse --mode=intersection-nonempty --type=three_prime_UTR --idattr=ID Aligned.out.sorted.bam FungiDB-45_NcrassaOR74A_3UTRs_7793_final.gff > $FILE.txt
+
+> done
+
+```{r}
+
+wt1 <- as.data.frame(read.table("./input_data/sample_1_wt_rep1_relab.txt"))
+
+wt2 <- as.data.frame(read.table("./input_data/sample_3_wt_rep2_relab.txt"))
+
+mut1 <- as.data.frame(read.table("./input_data/sample_2_mut_rep1_relab.txt"))
+
+mut2 <- as.data.frame(read.table("./input_data/sample_4_mut_rep2_relab.txt"))
+
+```
+
+## Determine the library size of each sample, and normalize
+
+Goal: normalize HTSeq-counts between the 4x samples by the different sequencing read library sizes
+
+```{r}
+
+wt1_sub <- wt1[1:7793,]
+wt2_sub <- wt2[1:7793,]
+mut1_sub <- mut1[1:7793,]
+mut2_sub <- mut2[1:7793,]
+## remove final 5 rows from standard htseq-count output: __no_feature, __ambiguous, __too_low_aQual, __not_aligned, __alignment_not_unique
+
+wt1_library_sz <- sum(as.numeric(wt1_sub[,2]))
+wt2_library_sz <- sum(as.numeric(wt2_sub[,2]))
+mut1_library_sz <- sum(as.numeric(mut1_sub[,2]))
+mut2_library_sz <- sum(as.numeric(mut2_sub[,2]))
+
+total_reads <- sum(wt1_library_sz, wt2_library_sz, mut1_library_sz, mut2_library_sz)
+
+total_reads_div4 <- total_reads / 4
+
+wt1_norm <- as.numeric(wt1_sub[,2]) / wt1_library_sz * total_reads_div4
+wt2_norm <- as.numeric(wt2_sub[,2]) / wt2_library_sz * total_reads_div4
+mut1_norm <- as.numeric(mut1_sub[,2]) / mut1_library_sz * total_reads_div4
+mut2_norm <- as.numeric(mut2_sub[,2]) / mut2_library_sz * total_reads_div4
+
+final_norm <- cbind(wt1_norm, wt2_norm, mut1_norm, mut2_norm)
+final_norm <- as.data.frame(final_norm)
+row.names(final_norm) <- as.character(wt1_sub[,1])
+columns <- c("wt_rep1", "wt_rep2", "mut_rep1", "mut_rep2")
+names(final_norm) <- columns
+
+write.table(final_norm, "./input_data/htseq_normalized.txt", quote=F, sep="\t")
+
+```
+
+## For Figure 4D, determine gene expression differences for key genes
+
+Genes of interest:
+wc-1 = NCU02356
+wc-2 = NCU00902
+frq = NCU02265
+frh = NCU03363
+cka = NCU03124
+ckb-1 = NCU05485
+ck-1a = NCU00685
+pabp-2 = NCU03946
+
+```{r}
+
+data <- final_norm
+
+data_wt <- as.data.frame(data[,1:2], row.names=row.names(data))
+data_wt_log2 <- log(data_wt, 2)
+## expression data are exponentially distributed, take the log before performing comparative analyses
+## note that any genes with "0" value will read "-Inf" now!
+data_wt_log2 <- as.data.frame(data_wt_log2)
+data_wt_avg <- apply(data_wt_log2, 1, mean)
+data_wt_sd <- apply(data_wt_log2, 1, sd)
+data_wt_plus <- data_wt_avg + data_wt_sd
+data_wt_minus <- data_wt_avg - data_wt_sd
+
+data_ko <- as.data.frame(data[,3:4], row.names=row.names(data))
+data_ko_log2 <- log(data_ko, 2)
+data_ko_log2 <- as.data.frame(data_ko_log2)
+data_ko_avg <- apply(data_ko_log2, 1, mean)
+data_ko_sd <- apply(data_ko_log2, 1, sd)
+data_ko_plus <- data_ko_avg + data_ko_sd
+data_ko_minus <- data_ko_avg - data_ko_sd
+
+data_cat <- as.data.frame(cbind(data_wt_avg, data_wt_plus, data_wt_minus, data_ko_avg, data_ko_plus, data_ko_minus), row.names=row.names(data_wt_log2))
+
+core_clock <- as.character(as.matrix(c("NCU02356", "NCU00902", "NCU02265", "NCU03363", "NCU03124", "NCU05485", "NCU00685", "NCU03946")))
+
+output <- matrix(nrow=length(core_clock), ncol=7)
+for(i in 1:length(core_clock)){
+  cur_gene <- core_clock[i]
+  cur_data <- as.matrix(data_cat[which(row.names(data_cat)==cur_gene), ])
+  output[i,1] <- cur_gene
+  output[i,2:7] <- cur_data
+  
+}
+
+output <- as.data.frame(output[,2:7], row.names=output[,1])
+names(output) <- c("WT_log2_avg", "WT_plus_sd", "WT_minus_sd", "delta_log2_avg", "delta_plus_sd", "delta_minus_sd")
+
+# write.table(output, "~/Desktop/core_clock_genes_8.txt", quote=F, sep="\t")
+
+```
+
+## Generate Figure 4D
+
+Export figure as SVG (700w x 550h) for Inkscape
+
+```{r, fig.width=7, fig.height=5.5}
+
+all_wt <- as.matrix(output[,1:3])
+all_ko <- as.matrix(output[,4:6])
+all <- rbind(all_wt, all_ko)
+
+barx <- barplot(as.numeric(all[,1]), ylim=c(4, 11.5), col=c("black", "black", "black", "black", "black", "black", "black", "black", "hotpink", "hotpink", "hotpink", "hotpink", "hotpink", "hotpink", "hotpink", "hotpink"), ylab="log2(fpkm)", cex.axis=1.5, lwd=2, las=2, names=c(core_clock, core_clock))
+arrows(x0=barx, y0=as.numeric(all[,2]), y1=as.numeric(all[,3]), code=3, angle=90, length=0.01)
+legend("topleft", c("wild-type","cpsf5 cpsf6"), bty="n", cex=0.8, fill=c("black", "hotpink"))
+
+```
+
+## Perform t-tests for differential expression
+
+Run t-tests comparing control to delta cpsf5 cpsf6. Use log-2 transformed count values because these are normally distributed
+
+```{r}
+
+data_wt_log2 <- data_wt_log2
+data_ko_log2 <- data_ko_log2
+core_clock <- core_clock
+
+output_2 <- matrix(nrow=length(core_clock), ncol=5)
+for(i in 1:length(core_clock)){
+  cur_gene <- core_clock[i]
+  cur_wt <- as.matrix(data_wt_log2[which(row.names(data_wt_log2)==cur_gene), ])
+  cur_ko <- as.matrix(data_ko_log2[which(row.names(data_ko_log2)==cur_gene), ])
+  output_2[i,1] <- cur_gene
+  output_2[i,2:3] <- cur_wt
+  output_2[i,4:5] <- cur_ko
+}
+output_2 <- as.data.frame(output_2[,2:5], row.names=output_2[,1])
+names(output_2) <- c("WT_log2_r1", "WT_log2_r2", "delta_log2_r1", "delta_log2_r2")
+
+# write.table(output_2, "~/Desktop/core_clock_genes_for_ttest.txt", quote=F, sep="\t")
+
+for(j in 1:length(core_clock)){
+  cur_gene <- core_clock[j]
+  cur_wt_expr <- as.numeric(as.matrix(output_2[j,1:2]))
+  cur_ko_expr <- as.numeric(as.matrix(output_2[j,3:4]))
+  print(paste(cur_gene,"control versus delta t-test result:", sep=" "))
+  print(t.test(cur_wt_expr, cur_ko_expr))
+}
+
+```

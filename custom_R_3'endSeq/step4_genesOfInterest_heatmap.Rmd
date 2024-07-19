@@ -1,0 +1,150 @@
+---
+title: "3’ End Sequencing Part 4: Visualize key 3' UTR regions (Figure 4B)"
+author: "Tina Kelliher"
+date: "2/7/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+```
+
+## Read in the file containing data
+
+Data type: Lexogen QuantSeq REV 3' End RNA-Sequencing; 75 bp SE stranded reads
+
+Raw data availability: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE201901
+
+Experimental strains: cspf5 cpsf6 double mutant & control
+
+Experimental conditions: 25C LL; 72 hours growth; 0.25% glucose w/v + 0.17% arginine w/v medium
+
+Experimental dates: 9/23/21 & 9/30/21 (N = 2 biological replicates per strain)
+
+Full data pipeline: see Materials & Methods of manuscript
+
+Data input to this script: sequencing read counts by 3' UTR coordinate; Lexogen QuantSeq REV library preparation generates only 1 sequencing read per mRNA transcript at the immediate 3' end; IGV software can be used first-pass to visualize poly(A) tail locations on genes of interest
+
+igvtools was downloaded by CMK from the Broad Institute (https://software.broadinstitute.org/software/igv/igvtools_commandline)
+
+igvtools was implemented via the command line (input files are mapped BAM files for each 3' end sequencing experiment):
+
+run_pipeline()
+
+> for FILE in `ls`
+
+> do
+
+> igvtools count -z 0 -w 1 --query CM002236:5369646-5370051 ./Aligned.out.sorted.bam ./1_nab2_NCU16397_counts.wig /Users/f003906/N_crassa_NC12_withUTRs/FungiDB-45_UTRs.genome
+
+> igvtools count -z 0 -w 1 --query CM002238:1904221-1904755 ./Aligned.out.sorted.bam ./2_rco-1_NCU06205_counts.wig /Users/f003906/N_crassa_NC12_withUTRs/FungiDB-45_UTRs.genome
+
+> igvtools count -z 0 -w 1 --query CM002241:1762214-1762755 ./Aligned.out.sorted.bam ./3_ckb-1_NCU05485_counts.wig /Users/f003906/N_crassa_NC12_withUTRs/FungiDB-45_UTRs.genome
+
+> igvtools count -z 0 -w 1 --query CM002236:4642603-4643148 ./Aligned.out.sorted.bam ./4_cka_NCU03124_counts.wig /Users/f003906/N_crassa_NC12_withUTRs/FungiDB-45_UTRs.genome
+
+> igvtools count -z 0 -w 1 --query CM002239:1644074-1644641 ./Aligned.out.sorted.bam ./5_septal_NCU06565_counts.wig /Users/f003906/N_crassa_NC12_withUTRs/FungiDB-45_UTRs.genome
+
+> igvtools count -z 0 -w 1 --query CM002237:964247-964862 ./Aligned.out.sorted.bam ./6_frh_NCU03363_counts.wig /Users/f003906/N_crassa_NC12_withUTRs/FungiDB-45_UTRs.genome
+
+> igvtools count -z 0 -w 1 --query CM002238:2018007-2018640 ./Aligned.out.sorted.bam ./7_pkac-1_NCU06240_counts.wig /Users/f003906/N_crassa_NC12_withUTRs/FungiDB-45_UTRs.genome
+
+> igvtools count -z 0 -w 1 --query CM002236:3284468-3285125 ./Aligned.out.sorted.bam ./8_csp-1_NCU02713_counts.wig /Users/f003906/N_crassa_NC12_withUTRs/FungiDB-45_UTRs.genome
+
+> igvtools count -z 0 -w 1 --query CM002236:6815517-6816232 ./Aligned.out.sorted.bam ./9_wc-2_NCU00902_counts.wig /Users/f003906/N_crassa_NC12_withUTRs/FungiDB-45_UTRs.genome
+
+> igvtools count -z 0 -w 1 --query CM002238:3240242-3241120 ./Aligned.out.sorted.bam ./10_set-2_NCU00269_counts.wig /Users/f003906/N_crassa_NC12_withUTRs/FungiDB-45_UTRs.genome
+
+> igvtools count -z 0 -w 1 --query CM002242:3136163-3136825 ./Aligned.out.sorted.bam ./11_frq_NCU02265_counts.wig /Users/f003906/N_crassa_NC12_withUTRs/FungiDB-45_UTRs.genome
+
+> igvtools count -z 0 -w 1 --query CM002241:2204875-2205750 ./Aligned.out.sorted.bam ./12_pabp-2_NCU03946_counts.wig /Users/f003906/N_crassa_NC12_withUTRs/FungiDB-45_UTRs.genome
+
+> igvtools count -z 0 -w 1 --query CM002238:1040640-1041521 ./Aligned.out.sorted.bam ./13_prd-1_NCU07839_counts.wig /Users/f003906/N_crassa_NC12_withUTRs/FungiDB-45_UTRs.genome
+
+> igvtools count -z 0 -w 1 --query CM002240:3235109-3236098 ./Aligned.out.sorted.bam ./14_set-1_NCU01206_counts.wig /Users/f003906/N_crassa_NC12_withUTRs/FungiDB-45_UTRs.genome
+
+> igvtools count -z 0 -w 1 --query CM002240:5327530-5328783 ./Aligned.out.sorted.bam ./15_upf1_NCU04242_counts.wig /Users/f003906/N_crassa_NC12_withUTRs/FungiDB-45_UTRs.genome
+
+> igvtools count -z 0 -w 1 --query CM002236:7565615-7567354 ./Aligned.out.sorted.bam ./16_ck-1a_NCU00685_counts.wig /Users/f003906/N_crassa_NC12_withUTRs/FungiDB-45_UTRs.genome
+
+> done
+
+In scripts not shown here, *.wig files were cleaned, replicates averaged, and Watson/Crick genes oriented as "distance from STOP" coordinates
+
+```{r}
+
+wt <- as.data.frame(read.table("./input_data/genes1-16_wild-type.txt", header=TRUE))
+
+mut <- as.data.frame(read.table("./input_data/genes1-16_c5c6mutant.txt", header=TRUE))
+
+```
+
+## Generate Figure 4B heatmaps and data key
+
+Acknowledgements: the code below is modified from Steve Haase's lab code base at Duke University, especially the blue/yellow color scheme designations
+
+Export heatmaps as SVG (900w x 600h) for Inkscape
+
+Export key as SVG (400w x 400h) for Inkscape
+
+```{r, fig.width=9, fig.height=6}
+
+wt_hm <- wt
+mut_hm <- mut
+
+points <- wt_hm[,1]
+## distance from STOP codon coordinates are exactly the same in both wild-type and mutant data files
+
+geneData_wt <- as.matrix(wt_hm[,2:ncol(wt_hm)])
+geneData_mut <- as.matrix(mut_hm[,2:ncol(mut_hm)])
+## remove the first column (coordinates) from each dataset
+
+geneData_wt <- geneData_wt + 1
+geneData_mut <- geneData_mut + 1
+## this step gets rid of any non-NA "0s" in the data for the log transformation
+## "NA" values in the original files will come out as white spaces in the heatmap
+
+wt_normalizers <- apply(geneData_wt, 2, mean, na.rm=TRUE)
+
+geneData_wt_meanNorm <- matrix(nrow=nrow(geneData_wt), ncol=ncol(geneData_wt))
+for(i in 1:ncol(geneData_wt)){
+  cur_3UTR <- geneData_wt[,i]
+  cur_normalizer <- wt_normalizers[i]
+  norm_data <- cur_3UTR / cur_normalizer
+  geneData_wt_meanNorm[,i] <- norm_data
+}
+
+geneData_mut_meanNorm <- matrix(nrow=nrow(geneData_mut), ncol=ncol(geneData_mut))
+for(j in 1:ncol(geneData_mut)){
+  cur_3UTR <- geneData_mut[,j]
+  cur_normalizer <- wt_normalizers[j]
+  norm_data <- cur_3UTR / cur_normalizer
+  geneData_mut_meanNorm[,j] <- norm_data
+}
+## mean-normalize COLUMN data TO THE WILD-TYPE MEANS, i.e. mutant poly(A) gene expression levels are comparable to wild-type
+
+logData_wt <- as.matrix(log2(geneData_wt_meanNorm))
+logData_mut <- as.matrix(log2(geneData_mut_meanNorm))
+## log2-normalize the datasets for heatmap values
+
+image(x=as.numeric(points), y=1:ncol(logData_wt), z=logData_wt, col=c(rgb(0, 49:1/49, 49:1/49), rgb(0:50/50, 0:50/50, 0)), xlab="distance from STOP codon", ylab="genes of interest", breaks=c(-100, seq(-3.0, 3.0, length=99), 100), yaxt="n")
+axis(2, 1:ncol(logData_wt), labels=names(wt_hm[2:17]), las=2, cex.axis=0.75)
+## note that the above line is hard coded for this dataset's number of columns!
+
+image(x=as.numeric(points), y=1:ncol(logData_mut), z=logData_mut, col=c(rgb(0, 49:1/49, 49:1/49), rgb(0:50/50, 0:50/50, 0)), xlab="distance from STOP codon", ylab="genes of interest", breaks=c(-100, seq(-3.0, 3.0, length=99), 100), yaxt="n")
+axis(2, 1:ncol(logData_mut), labels=names(wt_hm[2:17]), las=2, cex.axis=0.75)
+
+## draw a key for these 2 heatmaps:
+
+highCol <- 3.0
+## change this value for the upper bound
+lowCol <- -3.0
+## change this value for the lower bound
+cols <- c(rgb(0, 250:1/250, 250:1/250), rgb(0, 0, 0), rgb(1:250/250, 1:250/250, 0))
+## this matches the standard yellow/blue color scheme above
+tempDat <- matrix(seq(lowCol, highCol, length=1000), ncol=2, nrow=1000)
+brks <- c(-10, seq(lowCol, highCol, length = (length(cols)-1)), 10)
+image(1:ncol(tempDat), seq(lowCol, highCol, length=1000), t(tempDat), breaks=brks, col=cols, xlab="", ylab="Key", xaxt="n")
+
+```

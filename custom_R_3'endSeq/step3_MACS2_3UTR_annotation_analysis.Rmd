@@ -1,0 +1,885 @@
+---
+title: "3' End Sequencing Part 3: Annotate 3' Seq peaks called by MACS2 with NC12 genes using annotated 3' UTRs; compare annotated 3' UTR poly(A) tails between control and CFIm mutant (Supp Table 3, Supp Table 4)"
+author: "Tina Kelliher"
+date: "5/27/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+## install.packages("stringr")
+## install stringR into your session if you have not previously done so
+
+library(stringr)
+
+options(stringsAsFactors = FALSE)
+
+```
+
+## Read in the files containing data
+
+Data type: Lexogen QuantSeq REV 3' End RNA-Sequencing; 75 bp SE stranded reads
+
+Raw data availability: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE201901
+
+Experimental strains: cspf5 cpsf6 double mutant & control
+
+Experimental conditions: 25C LL; 72 hours growth; 0.25% glucose w/v + 0.17% arginine w/v medium
+
+Experimental dates: 9/23/21 & 9/30/21 (N = 2 biological replicates per strain)
+
+Data type # 2: 2P-Seq; 50 bp SE stranded reads
+
+Raw data availability: https://www.ncbi.nlm.nih.gov/bioproject/?term=PRJNA419320
+https://github.com/elifesciences-publications/poly-A-seq
+
+Experimental strain # 2: FGSC4200
+
+Experimental conditions # 2: 2% glucose liquid Vogel's medium
+
+Full data pipeline: see Materials & Methods of manuscript
+
+Data input to this script: MACS2 output files; Lexogen QuantSeq REV library preparation generates only 1 sequencing read per mRNA transcript at the immediate 3' end; peak-calling algorithms can be used to identify poly(A) tail locations
+
+MACS2 was downloaded by CMK from the Bioconda library using Anaconda's Python distribution (version 2.1.4)
+
+MACS2 was implemented via the command line (input files are mapped BAM files for each 3' end sequencing experiment):
+
+run_pipeline()
+
+> for FILE in `ls`
+
+> do
+
+> mkdir MACS2_out
+
+> macs2 callpeak -t Aligned.out.sorted.bam -f BAM -g 4.014e7 --keep-dup all --outdir MACS2_out --name $FILE --nomodel --extsize 75 -q 0.01 --call-summits
+
+> done
+
+```{r}
+
+gff <- as.data.frame(read.table("./input_data/FungiDB-45_NcrassaOR74A_3UTRs_7793_final.gff"), stringsAsFactors=FALSE)
+
+```
+
+## Reformat the Neurospora crassa OR74A GFF file from Step 1 for use in this pipeline
+
+```{r}
+
+gff_sub <- cbind(gff[,1], gff[,4:5], gff[,7], gff[,9])
+names(gff_sub) <- c("chromosome", "start", "end", "strand", "gene_info")
+labels <- str_extract(gff_sub$gene_info, paste("ID=utr_NCU", "[0-9]{5}", sep=""))
+labels_sub <- sub("ID=utr_", "", labels)
+gff_sub_2 <- cbind(labels_sub, gff_sub[1:4])
+names(gff_sub_2) <- c("gene", "chromosome", "start", "end", "strand")
+## write.table(gff_sub_2, "./FungiDB-45_NcrassaOR74A_3UTRsOnly.txt", quote=F, row.names=F, sep="\t")
+
+gff_sub_3 <- data.frame(gff_sub_2, stringsAsFactors=FALSE)
+## re-label the chromosomes as numbers for convenience
+for(i in 1:nrow(gff_sub_3)){
+  curr_chr <- as.character(gff_sub_3[i,2])
+  if(curr_chr=="CM002236"){
+    gff_sub_3[i,2] <- 1
+  } else if(curr_chr=="CM002237"){
+    gff_sub_3[i,2] <- 2
+  } else if(curr_chr=="CM002238"){
+    gff_sub_3[i,2] <- 3
+  } else if(curr_chr=="CM002239"){
+    gff_sub_3[i,2] <- 4
+  } else if(curr_chr=="CM002240"){
+    gff_sub_3[i,2] <- 5
+  } else if(curr_chr=="CM002241"){
+    gff_sub_3[i,2] <- 6
+  } else if(curr_chr=="CM002242"){
+    gff_sub_3[i,2] <- 7
+  } else{
+    next
+  }
+}
+gff_sub_3 <- gff_sub_3[order(gff_sub_3$start),]
+gff_sub_3 <- gff_sub_3[order(gff_sub_3$chromosome),]
+
+## last, remove any genes not on the main chromosomes: only rRNA genes & mitochrondria are on the extra contigs
+## original GFF file extra contigs == KC683708, KI440772, KI440765, KI440766, KI440769, KI440773, KI440776, KI440777
+## unique(gff_sub_3$chromosome)
+## no extra contig features have 3' UTRs, so no need to run this step!
+
+## gff_sub_3 <- gff_sub_3[which(gff_sub_3$chromosome==1 | gff_sub_3$chromosome==2 | gff_sub_3$chromosome==3 | gff_sub_3$chromosome==4 | gff_sub_3$chromosome==5 | gff_sub_3$chromosome==6 | gff_sub_3$chromosome==7),]
+
+```
+
+## MACS2 ChIP peak calling algorithm repurposed for identifying 3' seq peak poly(A) signals
+
+Goal: concatenate all MACS2 ChIP-Seq peaks with relevant locations and scores
+
+### Read in the MACS2 output from 6x 3' end sequencing experiments for formatting
+
+```{r}
+
+setwd("./input_data/MACS2_output/")
+
+folder <- getwd()
+numExps <- as.numeric(length(list.files(folder)))
+filenames <- list.files(folder)
+
+## concatenate all MACS2 results into 1 data frame
+for(i in 1:numExps) {
+  if(i==1){
+    curr_data <- read.table(filenames[i], sep="\t", header=T, stringsAsFactors=F, comment.char="#")
+    curr_data <- cbind(curr_data$name, curr_data$chr, curr_data$start, curr_data$end, curr_data$length, curr_data$abs_summit, curr_data$pileup, curr_data$X.log10.pvalue.)
+    data_cat <- as.data.frame(curr_data)
+  } else{
+    curr_data <- read.table(filenames[i], sep="\t", header=T, stringsAsFactors=F, comment.char="#")
+    curr_data <- cbind(curr_data$name, curr_data$chr, curr_data$start, curr_data$end, curr_data$length, curr_data$abs_summit, curr_data$pileup, curr_data$X.log10.pvalue.)
+    data_cat <- rbind(data_cat, curr_data)
+  }
+}
+names(data_cat) <- c("peak_label", "chr", "start_coord", "end_coord", "length_peak", "abs_summit_coord", "pileup_height", "neg_log10_pvalue")
+## write.table(data_cat, "./MACS2_peaks_cat.txt", quote=F, row.names=F, sep="\t")
+
+setwd("..")
+
+setwd("..")
+
+data_cat <- data.frame(data_cat, stringsAsFactors=FALSE)
+
+data_cat_2 <- data.frame(data_cat, stringsAsFactors=FALSE)
+## re-label the chromosomes as numbers to match the annotation above
+for(i in 1:nrow(data_cat_2)){
+  curr_chr <- as.character(data_cat_2[i,2])
+  if(curr_chr=="CM002236"){
+    data_cat_2[i,2] <- 1
+  } else if(curr_chr=="CM002237"){
+    data_cat_2[i,2] <- 2
+  } else if(curr_chr=="CM002238"){
+    data_cat_2[i,2] <- 3
+  } else if(curr_chr=="CM002239"){
+    data_cat_2[i,2] <- 4
+  } else if(curr_chr=="CM002240"){
+    data_cat_2[i,2] <- 5
+  } else if(curr_chr=="CM002241"){
+    data_cat_2[i,2] <- 6
+  } else if(curr_chr=="CM002242"){
+    data_cat_2[i,2] <- 7
+  } else{
+    next
+  }
+}
+
+## remove any peaks not on the main chromosomes
+data_cat_3 <- data_cat_2[which(data_cat_2$chr==1 | data_cat_2$chr==2 | data_cat_2$chr==3 | data_cat_2$chr==4 | data_cat_2$chr==5 | data_cat_2$chr==6 | data_cat_2$chr==7),]
+## For this set of experiments: 53,961 peaks --> 53,628 peaks (only 333 peaks on other contigs)
+
+data_cat_3 <- data.frame(data_cat_3, stringsAsFactors=FALSE)
+
+```
+
+## Annotate MACS2 peaks with respective gene(s) 3' UTR location
+
+Goal: annotate each MACS2 peak to the single corresponding 3' UTR
+
+```{r}
+
+peaks_data <- data.frame(data_cat_3, stringsAsFactors=FALSE)
+
+annot_data <- data.frame(gff_sub_3, stringsAsFactors=FALSE)
+
+chromosomes <- unique(annot_data$chromosome)
+## the nested FOR loop below will loop over chromosomes (b/c coordinates [1 ... right arm] are re-used) and then over individual peaks to annotate
+
+all_results <- NULL
+
+for(i in 1:length(chromosomes)){
+  curr_peaks <- peaks_data[peaks_data$chr == chromosomes[i], ]
+  ## subset for peaks by chromosome
+  curr_annot <- annot_data[annot_data$chromosome == chromosomes[i], ]
+  ## subset for annotations by chromosome
+  for(k in 1:nrow(curr_peaks)) {
+    curr_1peak <- as.numeric(curr_peaks[k, "abs_summit_coord"])
+    curr_gene_match <- curr_annot[which(curr_1peak >= as.numeric(curr_annot$start) & curr_1peak <= as.numeric(curr_annot$end)), ]
+    ## identify gene annotations where start and end coordinates contain the value of the current 3' seq peak
+    curr_num_hits <- as.numeric(nrow(curr_gene_match))
+    if(curr_num_hits==0){
+      ## 3' seq peak not assigned to any annotated 3' UTR
+      temp_output_1 <- curr_peaks[k, 1:8]
+      temp_output_2 <- matrix("NA", nrow=1, ncol=4)
+      temp_output <- data.frame(cbind(temp_output_1, temp_output_2, row.names=NULL))
+      colnames(temp_output) <- c("peak_label", "chr", "start_coord", "end_coord", "length_peak", "abs_summit_coord", "pileup_height", "neg_log10_pvalue", "gene_3UTR", "UTR_start", "UTR_end", "UTR_strand")
+      all_results <- rbind(all_results, temp_output)
+      
+    } else if(curr_num_hits==1){
+      ## 3' seq peak assigned to only 1x 3' UTR (most common)
+      temp_output_1 <- curr_peaks[k, 1:8]
+      temp_output_2 <- cbind(curr_gene_match[1, 1], curr_gene_match[1, 3:5]) 
+      temp_output <- data.frame(cbind(temp_output_1, temp_output_2, row.names=NULL))
+      colnames(temp_output) <- c("peak_label", "chr", "start_coord", "end_coord", "length_peak", "abs_summit_coord", "pileup_height", "neg_log10_pvalue", "gene_3UTR", "UTR_start", "UTR_end", "UTR_strand")
+      all_results <- rbind(all_results, temp_output)
+      
+    } else if(curr_num_hits==2){
+      ## 3' seq peak assigned to 2x 3' UTRs because they overlap in the annotation
+      ## print(paste("Warning!", as.character(curr_peaks[k, "peak_label"]), "matches 2 different 3' UTRs in the annotation", sep=" "))
+      ## 621x 3' UTR annotations physically overlap in the annotation, see "step1_modify_GFF" code
+      ## Duplicate assignments can be resolved visually because gene orientation and mapped read orientation are opposite (e.g. --> and <--), but visual inspection would be a huge amount of work for diminishing returns
+      ## Instead, create a new gene ID label for the match by merging the two NCU IDs and completing the fields with "NA"s
+      temp_output_1 <- curr_peaks[k, 1:8]
+      temp_match_A <- as.character(curr_gene_match[1, 1])
+      temp_match_B <- as.character(curr_gene_match[2, 1])
+      ## want the two gene matches to appear in alphanumerical order, thus the following ~6 commands
+      temp_match_orderA <- as.numeric(str_split_fixed(temp_match_A, "NCU", n=2)[2])
+      temp_match_orderB <- as.numeric(str_split_fixed(temp_match_B, "NCU", n=2)[2])
+      
+      if(temp_match_orderA < temp_match_orderB){
+        match <- paste(temp_match_A, "_", temp_match_B, sep="")
+      } else{
+        match <- paste(temp_match_B, "_", temp_match_A, sep="")
+      }
+      
+      temp_output_2 <- matrix("NA", nrow=1, ncol=4)
+      temp_output_2[1, 1] <- match
+      temp_output <- data.frame(cbind(temp_output_1, temp_output_2, row.names=NULL))
+      colnames(temp_output) <- c("peak_label", "chr", "start_coord", "end_coord", "length_peak", "abs_summit_coord", "pileup_height", "neg_log10_pvalue", "gene_3UTR", "UTR_start", "UTR_end", "UTR_strand")
+      all_results <- rbind(all_results, temp_output)
+      
+    }
+    
+  }
+  print("chromosome done!")
+  
+}
+
+write.table(all_results, "./input_data/MACS2_all_results_annotated.txt", sep="\t", row.names=F, quote=F)
+
+```
+
+## For wild-type Neurospora, how many genes have multiple poly(A) sites, also known as Alternative Polyadenylation (APA)?
+
+### Experiment Labels
+
+Nuc_1_SRR6315594 = Zhou 2018, wild-type nuclei, rep 1
+
+Nuc_2_SRR6315593 = Zhou 2018, wild-type nuclei, rep 2
+
+sample_1 = this study, wild-type, rep 1
+
+sample_3 = this study, wild-type, rep 2
+
+```{r}
+
+peaks_data <- as.data.frame(read.table("./input_data/MACS2_all_results_annotated.txt", header=TRUE), stringsAsFactors=FALSE)
+
+exp_labels <- as.character(peaks_data$peak_label)
+
+exp_labels_2 <- as.character(strsplit(exp_labels, "_peak_[0-9]+[a-z]?$"))
+
+zhou1 <- peaks_data[which(exp_labels_2=="Nuc_1_SRR6315594"), ]
+zhou2 <- peaks_data[which(exp_labels_2=="Nuc_2_SRR6315593"), ]
+wt1 <- peaks_data[which(exp_labels_2=="sample_1_wt_rep1"), ]
+wt2 <- peaks_data[which(exp_labels_2=="sample_3_wt_rep2"), ]
+
+zhou1_annot <- zhou1[which(is.na(zhou1$gene_3UTR)==FALSE), ]
+zhou2_annot <- zhou2[which(is.na(zhou2$gene_3UTR)==FALSE), ]
+wt1_annot <- wt1[which(is.na(wt1$gene_3UTR)==FALSE), ]
+wt2_annot <- wt2[which(is.na(wt2$gene_3UTR)==FALSE), ]
+
+
+
+zhou1_annot_nonmulti <- zhou1_annot[which(is.na(zhou1_annot$UTR_start)==FALSE), ]
+zhou1_annot_genes <- unique(zhou1_annot_nonmulti$gene_3UTR)
+
+zhou1_APA_output <- matrix(nrow=length(zhou1_annot_genes), ncol=2)
+for(i in 1:length(zhou1_annot_genes)){
+  cur_gene <- as.character(zhou1_annot_genes[i])
+  cur_gene_data <- zhou1_annot_nonmulti[which(zhou1_annot_nonmulti$gene_3UTR==cur_gene), ]
+  cur_APA <- as.numeric(nrow(cur_gene_data))
+  zhou1_APA_output[i,1] <- cur_gene
+  zhou1_APA_output[i,2] <- cur_APA
+  
+}
+zhou1_APA_output <- data.frame(zhou1_APA_output, stringsAsFactors = FALSE)
+names(zhou1_APA_output) <- c("gene_3UTR", "num_3seq_peaks")
+
+zhou1_APA_2plus <- zhou1_APA_output[which(as.numeric(zhou1_APA_output$num_3seq_peaks) >= 2), ]
+
+print(paste("ZHOU1: Number of APA events within the same 3' UTR:", nrow(zhou1_APA_2plus), "out of", nrow(zhou1_annot_nonmulti), "or", round(nrow(zhou1_APA_2plus)/nrow(zhou1_annot_nonmulti)*100, 2), "%", sep=" "))
+
+
+
+zhou2_annot_nonmulti <- zhou2_annot[which(is.na(zhou2_annot$UTR_start)==FALSE), ]
+zhou2_annot_genes <- unique(zhou2_annot_nonmulti$gene_3UTR)
+
+zhou2_APA_output <- matrix(nrow=length(zhou2_annot_genes), ncol=2)
+for(i in 1:length(zhou2_annot_genes)){
+  cur_gene <- as.character(zhou2_annot_genes[i])
+  cur_gene_data <- zhou2_annot_nonmulti[which(zhou2_annot_nonmulti$gene_3UTR==cur_gene), ]
+  cur_APA <- as.numeric(nrow(cur_gene_data))
+  zhou2_APA_output[i,1] <- cur_gene
+  zhou2_APA_output[i,2] <- cur_APA
+  
+}
+zhou2_APA_output <- data.frame(zhou2_APA_output, stringsAsFactors = FALSE)
+names(zhou2_APA_output) <- c("gene_3UTR", "num_3seq_peaks")
+
+zhou2_APA_2plus <- zhou2_APA_output[which(as.numeric(zhou2_APA_output$num_3seq_peaks) >= 2), ]
+
+print(paste("ZHOU2: Number of APA events within the same 3' UTR:", nrow(zhou2_APA_2plus), "out of", nrow(zhou2_annot_nonmulti), "or", round(nrow(zhou2_APA_2plus)/nrow(zhou2_annot_nonmulti)*100, 2), "%", sep=" "))
+
+
+
+wt1_annot_nonmulti <- wt1_annot[which(is.na(wt1_annot$UTR_start)==FALSE), ]
+wt1_annot_genes <- unique(wt1_annot_nonmulti$gene_3UTR)
+
+wt1_APA_output <- matrix(nrow=length(wt1_annot_genes), ncol=2)
+for(i in 1:length(wt1_annot_genes)){
+  cur_gene <- as.character(wt1_annot_genes[i])
+  cur_gene_data <- wt1_annot_nonmulti[which(wt1_annot_nonmulti$gene_3UTR==cur_gene), ]
+  cur_APA <- as.numeric(nrow(cur_gene_data))
+  wt1_APA_output[i,1] <- cur_gene
+  wt1_APA_output[i,2] <- cur_APA
+  
+}
+wt1_APA_output <- data.frame(wt1_APA_output, stringsAsFactors = FALSE)
+names(wt1_APA_output) <- c("gene_3UTR", "num_3seq_peaks")
+
+wt1_APA_2plus <- wt1_APA_output[which(as.numeric(wt1_APA_output$num_3seq_peaks) >= 2), ]
+
+print(paste("WT1: Number of APA events within the same 3' UTR:", nrow(wt1_APA_2plus), "out of", nrow(wt1_annot_nonmulti), "or", round(nrow(wt1_APA_2plus)/nrow(wt1_annot_nonmulti)*100, 2), "%", sep=" "))
+
+
+
+wt2_annot_nonmulti <- wt2_annot[which(is.na(wt2_annot$UTR_start)==FALSE), ]
+wt2_annot_genes <- unique(wt2_annot_nonmulti$gene_3UTR)
+
+wt2_APA_output <- matrix(nrow=length(wt2_annot_genes), ncol=2)
+for(i in 1:length(wt2_annot_genes)){
+  cur_gene <- as.character(wt2_annot_genes[i])
+  cur_gene_data <- wt2_annot_nonmulti[which(wt2_annot_nonmulti$gene_3UTR==cur_gene), ]
+  cur_APA <- as.numeric(nrow(cur_gene_data))
+  wt2_APA_output[i,1] <- cur_gene
+  wt2_APA_output[i,2] <- cur_APA
+  
+}
+wt2_APA_output <- data.frame(wt2_APA_output, stringsAsFactors = FALSE)
+names(wt2_APA_output) <- c("gene_3UTR", "num_3seq_peaks")
+
+wt2_APA_2plus <- wt2_APA_output[which(as.numeric(wt2_APA_output$num_3seq_peaks) >= 2), ]
+
+print(paste("WT2: Number of APA events within the same 3' UTR:", nrow(wt2_APA_2plus), "out of", nrow(wt2_annot_nonmulti), "or", round(nrow(wt2_APA_2plus)/nrow(wt2_annot_nonmulti)*100, 2), "%", sep=" "))
+
+
+
+zhou1_APA_genes <- as.character(zhou1_APA_2plus$gene_3UTR)
+zhou2_APA_genes <- as.character(zhou2_APA_2plus$gene_3UTR)
+zhou_union <- union(zhou1_APA_genes, zhou2_APA_genes)
+zhou_int <- intersect(zhou1_APA_genes, zhou2_APA_genes)
+
+wt1_APA_genes <- as.character(wt1_APA_2plus$gene_3UTR)
+wt2_APA_genes <- as.character(wt2_APA_2plus$gene_3UTR)
+wt_union <- union(wt1_APA_genes, wt2_APA_genes)
+wt_int <- intersect(wt1_APA_genes, wt2_APA_genes)
+
+all_union <- union(zhou_union, wt_union)
+all_int <- intersect(zhou_int, wt_int)
+all_1rep <- intersect(zhou_union, wt_union)
+
+print(paste("This study & Zhou 2018 consensus list of APA events:", length(all_int), "out of", length(wt1_APA_genes), "or", round(length(all_int)/length(wt1_APA_genes)*100, 2), "%", sep=" "))
+
+all_int <- all_int
+
+wt1_export_843 <- wt1[which(is.element(wt1$gene_3UTR, all_int) == TRUE), ]
+wt2_export_843 <- wt2[which(is.element(wt2$gene_3UTR, all_int) == TRUE), ]
+zhou1_export_843 <- zhou1[which(is.element(zhou1$gene_3UTR, all_int) == TRUE), ]
+zhou2_export_843 <- zhou2[which(is.element(zhou2$gene_3UTR, all_int) == TRUE), ]
+
+write.table(wt1_export_843, "./input_data/843consensusAPA_wt_rep1.txt", sep="\t", row.names=F, quote=F)
+write.table(wt2_export_843, "./input_data/843consensusAPA_wt_rep2.txt", sep="\t", row.names=F, quote=F)
+write.table(zhou1_export_843, "./input_data/843consensusAPA_zhou_2018_rep1.txt", sep="\t", row.names=F, quote=F)
+write.table(zhou2_export_843, "./input_data/843consensusAPA_zhou2018_rep2.txt", sep="\t", row.names=F, quote=F)
+
+```
+
+## Question 1 of 3: How many APA genes in wild-type show single poly(A) peaks in mutant cells?
+
+### Experiment Labels
+
+sample_1 = this study, wild-type, rep 1
+
+sample_2 = this study, cpsf5 cpsf6, rep 1
+
+sample_3 = this study, wild-type, rep 2
+
+sample_4 = this study, cpsf5 cpsf6, rep 2
+
+```{r}
+
+exp_labels <- exp_labels
+exp_labels_2 <- exp_labels_2
+
+mut1 <- peaks_data[which(exp_labels_2=="sample_2_mut_rep1"), ]
+mut2 <- peaks_data[which(exp_labels_2=="sample_4_mut_rep2"), ]
+
+mut1_annot <- mut1[which(is.na(mut1$gene_3UTR)==FALSE), ]
+mut2_annot <- mut2[which(is.na(mut2$gene_3UTR)==FALSE), ]
+
+
+
+mut1_annot_nonmulti <- mut1_annot[which(is.na(mut1_annot$UTR_start)==FALSE), ]
+mut1_annot_genes <- unique(mut1_annot_nonmulti$gene_3UTR)
+
+mut1_APA_output <- matrix(nrow=length(mut1_annot_genes), ncol=2)
+for(i in 1:length(mut1_annot_genes)){
+  cur_gene <- as.character(mut1_annot_genes[i])
+  cur_gene_data <- mut1_annot_nonmulti[which(mut1_annot_nonmulti$gene_3UTR==cur_gene), ]
+  cur_APA <- as.numeric(nrow(cur_gene_data))
+  mut1_APA_output[i,1] <- cur_gene
+  mut1_APA_output[i,2] <- cur_APA
+  
+}
+mut1_APA_output <- data.frame(mut1_APA_output, stringsAsFactors = FALSE)
+names(mut1_APA_output) <- c("gene_3UTR", "num_3seq_peaks")
+
+mut1_APA_2plus <- mut1_APA_output[which(as.numeric(mut1_APA_output$num_3seq_peaks) >= 2), ]
+
+print(paste("MUT1: Number of APA events within the same 3' UTR:", nrow(mut1_APA_2plus), "out of", nrow(mut1_annot_nonmulti), "or", round(nrow(mut1_APA_2plus)/nrow(mut1_annot_nonmulti)*100, 2), "%", sep=" "))
+
+
+
+mut2_annot_nonmulti <- mut2_annot[which(is.na(mut2_annot$UTR_start)==FALSE), ]
+
+mut2_annot_genes <- unique(mut2_annot_nonmulti$gene_3UTR)
+
+mut2_APA_output <- matrix(nrow=length(mut2_annot_genes), ncol=2)
+for(i in 1:length(mut2_annot_genes)){
+  cur_gene <- as.character(mut2_annot_genes[i])
+  cur_gene_data <- mut2_annot_nonmulti[which(mut2_annot_nonmulti$gene_3UTR==cur_gene), ]
+  cur_APA <- as.numeric(nrow(cur_gene_data))
+  mut2_APA_output[i,1] <- cur_gene
+  mut2_APA_output[i,2] <- cur_APA
+  
+}
+mut2_APA_output <- data.frame(mut2_APA_output, stringsAsFactors = FALSE)
+names(mut2_APA_output) <- c("gene_3UTR", "num_3seq_peaks")
+
+mut2_APA_2plus <- mut2_APA_output[which(as.numeric(mut2_APA_output$num_3seq_peaks) >= 2), ]
+
+print(paste("MUT2: Number of APA events within the same 3' UTR:", nrow(mut2_APA_2plus), "out of", nrow(mut2_annot_nonmulti), "or", round(nrow(mut2_APA_2plus)/nrow(mut2_annot_nonmulti)*100, 2), "%", sep=" "))
+
+
+
+mut1_APA_genes <- as.character(mut1_APA_2plus$gene_3UTR)
+mut2_APA_genes <- as.character(mut2_APA_2plus$gene_3UTR)
+mut_union <- union(mut1_APA_genes, mut2_APA_genes)
+mut_int <- intersect(mut1_APA_genes, mut2_APA_genes)
+
+
+
+common_genes_WT <- intersect(mut1_annot_genes, mut2_annot_genes)
+common_genes_WT <- intersect(common_genes_WT, wt_int)
+
+
+
+mut1_APA_WT <- mut1_APA_output[which(is.element(mut1_APA_output$gene_3UTR, common_genes_WT) == TRUE), ]
+mut2_APA_WT <- mut2_APA_output[which(is.element(mut2_APA_output$gene_3UTR, common_genes_WT) == TRUE), ]
+
+mut1_1x_WT_APA <- mut1_APA_WT[which(as.numeric(mut1_APA_WT$num_3seq_peaks) == 1), ]
+mut2_1x_WT_APA <- mut2_APA_WT[which(as.numeric(mut2_APA_WT$num_3seq_peaks) == 1), ]
+
+mut1_1x_genes <- as.character(mut1_1x_WT_APA$gene_3UTR)
+mut2_1x_genes <- as.character(mut2_1x_WT_APA$gene_3UTR)
+mut_1x_union <- union(mut1_1x_genes, mut2_1x_genes)
+mut_1x_int <- intersect(mut1_1x_genes, mut2_1x_genes)
+
+print(paste("This study, wild-type APA events that are lost in cpsf5 cpsf6 mutants:", length(mut_1x_int), "out of", length(common_genes_WT), "or", round(length(mut_1x_int)/length(common_genes_WT)*100, 2), "%", sep=" "))
+
+```
+
+## Question 2 of 3: How many APA genes in mutant show single poly(A) peaks in wild-type cells?
+
+### Experiment Labels
+
+sample_1 = this study, wild-type, rep 1
+
+sample_2 = this study, cpsf5 cpsf6, rep 1
+
+sample_3 = this study, wild-type, rep 2
+
+sample_4 = this study, cpsf5 cpsf6, rep 2
+
+```{r}
+
+common_genes_mut <- intersect(wt1_annot_genes, wt2_annot_genes)
+common_genes_mut <- intersect(common_genes_mut, mut_int)
+
+common_genes_allAPA <- union(common_genes_WT, common_genes_mut)
+
+wt1_APA_mut <- wt1_APA_output[which(is.element(wt1_APA_output$gene_3UTR, common_genes_mut) == TRUE), ]
+wt2_APA_mut <- wt2_APA_output[which(is.element(wt2_APA_output$gene_3UTR, common_genes_mut) == TRUE), ]
+
+wt1_1x_mut_APA <- wt1_APA_mut[which(as.numeric(wt1_APA_mut$num_3seq_peaks) == 1), ]
+wt2_1x_mut_APA <- wt2_APA_mut[which(as.numeric(wt2_APA_mut$num_3seq_peaks) == 1), ]
+
+wt1_1x_genes <- as.character(wt1_1x_mut_APA$gene_3UTR)
+wt2_1x_genes <- as.character(wt2_1x_mut_APA$gene_3UTR)
+wt_1x_union <- union(wt1_1x_genes, wt2_1x_genes)
+wt_1x_int <- intersect(wt1_1x_genes, wt2_1x_genes)
+
+print(paste("This study, cpsf5 cpsf6 APA events that are lost in wild-type:", length(wt_1x_int), "out of", length(common_genes_mut), "or", round(length(wt_1x_int)/length(common_genes_mut)*100, 2), "%", sep=" "))
+
+```
+
+## Question 3 of 3: For APA genes in both mutant and wild-type, how many times is the predominant APA site usage altered? When APA is altered, is the proximal or distal APA site preferred?
+
+### Experiment Labels
+
+sample_1 = this study, wild-type, rep 1
+
+sample_2 = this study, cpsf5 cpsf6, rep 1
+
+sample_3 = this study, wild-type, rep 2
+
+sample_4 = this study, cpsf5 cpsf6, rep 2
+
+```{r}
+
+all_int_this_study <- intersect(wt_int, mut_int)
+
+wt1_APA_int <- wt1[which(is.element(wt1$gene_3UTR, all_int_this_study) == TRUE), ]
+
+wt1_APA_int_output <- matrix(nrow=length(all_int_this_study), ncol=6)
+for(i in 1:length(all_int_this_study)){
+  cur_gene <- as.character(all_int_this_study[i])
+  cur_APA <- wt1[which(is.element(wt1$gene_3UTR, cur_gene) == TRUE), ]
+  cur_peaks <- as.numeric(cur_APA$pileup_height)
+  tallest_peak <- cur_peaks[which.max(cur_peaks)]
+  tallest_peak_APA <- cur_APA[which(as.numeric(cur_APA$pileup_height)==tallest_peak), ]
+  tallest_peak_coord <- as.numeric(tallest_peak_APA$abs_summit_coord)
+  total_height <- sum(cur_peaks)
+  if(length(tallest_peak_coord) > 1){
+    ## during debugging, a case came up where there were two peaks at exactly 50/50.. there was no consensus tallest peak!
+    wt1_APA_int_output[i,1] <- cur_gene
+    wt1_APA_int_output[i,2] <- as.numeric(nrow(cur_APA))
+    wt1_APA_int_output[i,3] <- tallest_peak
+    wt1_APA_int_output[i,4] <- tallest_peak / total_height * 100
+    wt1_APA_int_output[i,5] <- "NA"
+    wt1_APA_int_output[i,6] <- "NA"
+    wt1_APA_int_output <- data.frame(wt1_APA_int_output, stringsAsFactors=FALSE)
+    names(wt1_APA_int_output) <- c("gene_3UTR", "num_3seq_peaks", "pileup_height", "percent_total_APA_height", "abs_summit_coord", "orientation_to_STOP")
+    
+  } else{
+    cur_peak_ratios <- cur_peaks / total_height
+    cur_coords <- as.numeric(cur_APA$abs_summit_coord)
+    cur_coords_weighted <- cur_coords * cur_peak_ratios
+    avg_coords_loc <- sum(cur_coords_weighted)
+    ## using a weighted mean peak coordinate as a metric to determine if the tallest peak is PROXIMAL or DISTAL to the gene's STOP codon. The weighted mean method computes where the average poly(A) site is relative to peak heights of all APA peaks
+    if(cur_APA$UTR_strand[1]=="+"){
+      gene_stop_coord <- as.numeric(cur_APA$UTR_start[1])
+      ## if the annotated 3' UTR is a postive / Watson strand gene, the STOP codon belongs to the left-most 3' UTR coordinate (smaller #)
+      if(tallest_peak_coord > gene_stop_coord && tallest_peak_coord > avg_coords_loc){
+        orientation <- "distal"
+      } else if(tallest_peak_coord > gene_stop_coord && tallest_peak_coord < avg_coords_loc){
+        orientation <- "proximal"
+      } else{
+        orientation <- "BUG!!"
+      }
+    } else if(cur_APA$UTR_strand[1]=="-"){
+      gene_stop_coord <- as.numeric(cur_APA$UTR_end[1])
+      ## if the annotated 3' UTR is a negative / Crick strand gene, the STOP codon belongs to the right-most 3' UTR coordinate (larger #)
+      if(tallest_peak_coord < gene_stop_coord && tallest_peak_coord < avg_coords_loc){
+        orientation <- "distal"
+      } else if(tallest_peak_coord < gene_stop_coord && tallest_peak_coord > avg_coords_loc){
+        orientation <- "proximal"
+      } else{
+        orientation <- "BUG!!"
+      }
+    }
+    
+    wt1_APA_int_output[i,1] <- cur_gene
+    wt1_APA_int_output[i,2] <- as.numeric(nrow(cur_APA))
+    wt1_APA_int_output[i,3] <- tallest_peak
+    wt1_APA_int_output[i,4] <- tallest_peak / total_height * 100
+    wt1_APA_int_output[i,5] <- tallest_peak_coord
+    wt1_APA_int_output[i,6] <- orientation
+    wt1_APA_int_output <- data.frame(wt1_APA_int_output, stringsAsFactors=FALSE)
+    names(wt1_APA_int_output) <- c("gene_3UTR", "num_3seq_peaks", "pileup_height", "percent_total_APA_height", "abs_summit_coord", "orientation_to_STOP")
+
+  }
+
+}
+
+wt2_APA_int <- wt2[which(is.element(wt2$gene_3UTR, all_int_this_study) == TRUE), ]
+
+wt2_APA_int_output <- matrix(nrow=length(all_int_this_study), ncol=6)
+for(i in 1:length(all_int_this_study)){
+  cur_gene <- as.character(all_int_this_study[i])
+  cur_APA <- wt2[which(is.element(wt2$gene_3UTR, cur_gene) == TRUE), ]
+  cur_peaks <- as.numeric(cur_APA$pileup_height)
+  tallest_peak <- cur_peaks[which.max(cur_peaks)]
+  tallest_peak_APA <- cur_APA[which(as.numeric(cur_APA$pileup_height)==tallest_peak), ]
+  tallest_peak_coord <- as.numeric(tallest_peak_APA$abs_summit_coord)
+  total_height <- sum(cur_peaks)
+  if(length(tallest_peak_coord) > 1){
+    wt2_APA_int_output[i,1] <- cur_gene
+    wt2_APA_int_output[i,2] <- as.numeric(nrow(cur_APA))
+    wt2_APA_int_output[i,3] <- tallest_peak
+    wt2_APA_int_output[i,4] <- tallest_peak / total_height * 100
+    wt2_APA_int_output[i,5] <- "NA"
+    wt2_APA_int_output[i,6] <- "NA"
+    wt2_APA_int_output <- data.frame(wt2_APA_int_output, stringsAsFactors=FALSE)
+    names(wt2_APA_int_output) <- c("gene_3UTR", "num_3seq_peaks", "pileup_height", "percent_total_APA_height", "abs_summit_coord", "orientation_to_STOP")
+    
+  } else{
+    cur_peak_ratios <- cur_peaks / total_height
+    cur_coords <- as.numeric(cur_APA$abs_summit_coord)
+    cur_coords_weighted <- cur_coords * cur_peak_ratios
+    avg_coords_loc <- sum(cur_coords_weighted)
+    if(cur_APA$UTR_strand[1]=="+"){
+      gene_stop_coord <- as.numeric(cur_APA$UTR_start[1])
+      if(tallest_peak_coord > gene_stop_coord && tallest_peak_coord > avg_coords_loc){
+        orientation <- "distal"
+      } else if(tallest_peak_coord > gene_stop_coord && tallest_peak_coord < avg_coords_loc){
+        orientation <- "proximal"
+      } else{
+        orientation <- "BUG!!"
+      }
+    } else if(cur_APA$UTR_strand[1]=="-"){
+      gene_stop_coord <- as.numeric(cur_APA$UTR_end[1])
+      if(tallest_peak_coord < gene_stop_coord && tallest_peak_coord < avg_coords_loc){
+        orientation <- "distal"
+      } else if(tallest_peak_coord < gene_stop_coord && tallest_peak_coord > avg_coords_loc){
+        orientation <- "proximal"
+      } else{
+        orientation <- "BUG!!"
+      }
+    }
+    
+    wt2_APA_int_output[i,1] <- cur_gene
+    wt2_APA_int_output[i,2] <- as.numeric(nrow(cur_APA))
+    wt2_APA_int_output[i,3] <- tallest_peak
+    wt2_APA_int_output[i,4] <- tallest_peak / total_height * 100
+    wt2_APA_int_output[i,5] <- tallest_peak_coord
+    wt2_APA_int_output[i,6] <- orientation
+    wt2_APA_int_output <- data.frame(wt2_APA_int_output, stringsAsFactors=FALSE)
+    names(wt2_APA_int_output) <- c("gene_3UTR", "num_3seq_peaks", "pileup_height", "percent_total_APA_height", "abs_summit_coord", "orientation_to_STOP")
+
+  }
+
+}
+
+mut1_APA_int <- mut1[which(is.element(mut1$gene_3UTR, all_int_this_study) == TRUE), ]
+
+mut1_APA_int_output <- matrix(nrow=length(all_int_this_study), ncol=6)
+for(i in 1:length(all_int_this_study)){
+  cur_gene <- as.character(all_int_this_study[i])
+  cur_APA <- mut1[which(is.element(mut1$gene_3UTR, cur_gene) == TRUE), ]
+  cur_peaks <- as.numeric(cur_APA$pileup_height)
+  tallest_peak <- cur_peaks[which.max(cur_peaks)]
+  tallest_peak_APA <- cur_APA[which(as.numeric(cur_APA$pileup_height)==tallest_peak), ]
+  tallest_peak_coord <- as.numeric(tallest_peak_APA$abs_summit_coord)
+  total_height <- sum(cur_peaks)
+  if(length(tallest_peak_coord) > 1){
+    mut1_APA_int_output[i,1] <- cur_gene
+    mut1_APA_int_output[i,2] <- as.numeric(nrow(cur_APA))
+    mut1_APA_int_output[i,3] <- tallest_peak
+    mut1_APA_int_output[i,4] <- tallest_peak / total_height * 100
+    mut1_APA_int_output[i,5] <- "NA"
+    mut1_APA_int_output[i,6] <- "NA"
+    mut1_APA_int_output <- data.frame(mut1_APA_int_output, stringsAsFactors=FALSE)
+    names(mut1_APA_int_output) <- c("gene_3UTR", "num_3seq_peaks", "pileup_height", "percent_total_APA_height", "abs_summit_coord", "orientation_to_STOP")
+    
+  } else{
+    cur_peak_ratios <- cur_peaks / total_height
+    cur_coords <- as.numeric(cur_APA$abs_summit_coord)
+    cur_coords_weighted <- cur_coords * cur_peak_ratios
+    avg_coords_loc <- sum(cur_coords_weighted)
+    if(cur_APA$UTR_strand[1]=="+"){
+      gene_stop_coord <- as.numeric(cur_APA$UTR_start[1])
+      if(tallest_peak_coord > gene_stop_coord && tallest_peak_coord > avg_coords_loc){
+        orientation <- "distal"
+      } else if(tallest_peak_coord > gene_stop_coord && tallest_peak_coord < avg_coords_loc){
+        orientation <- "proximal"
+      } else{
+        orientation <- "BUG!!"
+      }
+    } else if(cur_APA$UTR_strand[1]=="-"){
+      gene_stop_coord <- as.numeric(cur_APA$UTR_end[1])
+      if(tallest_peak_coord < gene_stop_coord && tallest_peak_coord < avg_coords_loc){
+        orientation <- "distal"
+      } else if(tallest_peak_coord < gene_stop_coord && tallest_peak_coord > avg_coords_loc){
+        orientation <- "proximal"
+      } else{
+        orientation <- "BUG!!"
+      }
+    }
+    
+    mut1_APA_int_output[i,1] <- cur_gene
+    mut1_APA_int_output[i,2] <- as.numeric(nrow(cur_APA))
+    mut1_APA_int_output[i,3] <- tallest_peak
+    mut1_APA_int_output[i,4] <- tallest_peak / total_height * 100
+    mut1_APA_int_output[i,5] <- tallest_peak_coord
+    mut1_APA_int_output[i,6] <- orientation
+    mut1_APA_int_output <- data.frame(mut1_APA_int_output, stringsAsFactors=FALSE)
+    names(mut1_APA_int_output) <- c("gene_3UTR", "num_3seq_peaks", "pileup_height", "percent_total_APA_height", "abs_summit_coord", "orientation_to_STOP")
+
+  }
+
+}
+
+mut2_APA_int <- mut2[which(is.element(mut2$gene_3UTR, all_int_this_study) == TRUE), ]
+
+mut2_APA_int_output <- matrix(nrow=length(all_int_this_study), ncol=6)
+for(i in 1:length(all_int_this_study)){
+  cur_gene <- as.character(all_int_this_study[i])
+  cur_APA <- mut2[which(is.element(mut2$gene_3UTR, cur_gene) == TRUE), ]
+  cur_peaks <- as.numeric(cur_APA$pileup_height)
+  tallest_peak <- cur_peaks[which.max(cur_peaks)]
+  tallest_peak_APA <- cur_APA[which(as.numeric(cur_APA$pileup_height)==tallest_peak), ]
+  tallest_peak_coord <- as.numeric(tallest_peak_APA$abs_summit_coord)
+  total_height <- sum(cur_peaks)
+  if(length(tallest_peak_coord) > 1){
+    mut2_APA_int_output[i,1] <- cur_gene
+    mut2_APA_int_output[i,2] <- as.numeric(nrow(cur_APA))
+    mut2_APA_int_output[i,3] <- tallest_peak
+    mut2_APA_int_output[i,4] <- tallest_peak / total_height * 100
+    mut2_APA_int_output[i,5] <- "NA"
+    mut2_APA_int_output[i,6] <- "NA"
+    mut2_APA_int_output <- data.frame(mut2_APA_int_output, stringsAsFactors=FALSE)
+    names(mut2_APA_int_output) <- c("gene_3UTR", "num_3seq_peaks", "pileup_height", "percent_total_APA_height", "abs_summit_coord", "orientation_to_STOP")
+    
+  } else{
+    cur_peak_ratios <- cur_peaks / total_height
+    cur_coords <- as.numeric(cur_APA$abs_summit_coord)
+    cur_coords_weighted <- cur_coords * cur_peak_ratios
+    avg_coords_loc <- sum(cur_coords_weighted)
+    if(cur_APA$UTR_strand[1]=="+"){
+      gene_stop_coord <- as.numeric(cur_APA$UTR_start[1])
+      if(tallest_peak_coord > gene_stop_coord && tallest_peak_coord > avg_coords_loc){
+        orientation <- "distal"
+      } else if(tallest_peak_coord > gene_stop_coord && tallest_peak_coord < avg_coords_loc){
+        orientation <- "proximal"
+      } else{
+        orientation <- "BUG!!"
+      }
+    } else if(cur_APA$UTR_strand[1]=="-"){
+      gene_stop_coord <- as.numeric(cur_APA$UTR_end[1])
+      if(tallest_peak_coord < gene_stop_coord && tallest_peak_coord < avg_coords_loc){
+        orientation <- "distal"
+      } else if(tallest_peak_coord < gene_stop_coord && tallest_peak_coord > avg_coords_loc){
+        orientation <- "proximal"
+      } else{
+        orientation <- "BUG!!"
+      }
+    }
+    
+    mut2_APA_int_output[i,1] <- cur_gene
+    mut2_APA_int_output[i,2] <- as.numeric(nrow(cur_APA))
+    mut2_APA_int_output[i,3] <- tallest_peak
+    mut2_APA_int_output[i,4] <- tallest_peak / total_height * 100
+    mut2_APA_int_output[i,5] <- tallest_peak_coord
+    mut2_APA_int_output[i,6] <- orientation
+    mut2_APA_int_output <- data.frame(mut2_APA_int_output, stringsAsFactors=FALSE)
+    names(mut2_APA_int_output) <- c("gene_3UTR", "num_3seq_peaks", "pileup_height", "percent_total_APA_height", "abs_summit_coord", "orientation_to_STOP")
+
+  }
+
+}
+
+
+
+wt_same_orient <- NULL
+for(i in 1:length(all_int_this_study)){
+  cur_gene <- all_int_this_study[i]
+  cur_wt1 <- wt1_APA_int_output[which(wt1_APA_int_output$gene_3UTR==cur_gene), ]
+  cur_wt2 <- wt2_APA_int_output[which(wt2_APA_int_output$gene_3UTR==cur_gene), ]
+  cur_orient1 <- as.character(cur_wt1$orientation_to_STOP)
+  cur_orient2 <- as.character(cur_wt2$orientation_to_STOP)
+  if(cur_orient1==cur_orient2){
+    wt_same_orient <- rbind(wt_same_orient, cur_gene)
+    
+  } else{
+    next
+    
+  }
+}
+
+print(paste("Consensus APA events from this study, wild-type APA dominant peaks are in the same orientation:", length(wt_same_orient), "out of", length(all_int_this_study), "or", round(length(wt_same_orient)/length(all_int_this_study)*100, 2), "%", sep=" "))
+
+mut_same_orient <- NULL
+for(i in 1:length(all_int_this_study)){
+  cur_gene <- all_int_this_study[i]
+  cur_mut1 <- mut1_APA_int_output[which(mut1_APA_int_output$gene_3UTR==cur_gene), ]
+  cur_mut2 <- mut2_APA_int_output[which(mut2_APA_int_output$gene_3UTR==cur_gene), ]
+  cur_orient1 <- as.character(cur_mut1$orientation_to_STOP)
+  cur_orient2 <- as.character(cur_mut2$orientation_to_STOP)
+  if(cur_orient1==cur_orient2){
+    mut_same_orient <- rbind(mut_same_orient, cur_gene)
+    
+  } else{
+    next
+    
+  }
+}
+
+print(paste("Consensus APA events from this study, cpsf5 cpsf6 mutant APA dominant peaks are in the same orientation:", length(mut_same_orient), "out of", length(all_int_this_study), "or", round(length(mut_same_orient)/length(all_int_this_study)*100, 2), "%", sep=" "))
+
+## very odd coincidence that the exact same number of genes are equivalent in WT and mutant replicates! Triple checked that these two lists are indeed unique
+
+dataset_same_orient <- intersect(wt_same_orient, mut_same_orient)
+
+print(paste("Consensus APA events from this study, wt/wt AND mut/mut dominant peaks are in the same orientation:", length(dataset_same_orient), "out of", length(wt_same_orient), "or", round(length(dataset_same_orient)/length(wt_same_orient)*100, 2), "%", sep=" "))
+
+mut_CHANGE_orient <- NULL
+for(i in 1:length(dataset_same_orient)){
+  cur_gene <- dataset_same_orient[i]
+  cur_wt <- wt1_APA_int_output[which(wt1_APA_int_output$gene_3UTR==cur_gene), ]
+  ## used wt rep1 here, but could use rep2 for equivalent results!
+  cur_mut <- mut1_APA_int_output[which(mut1_APA_int_output$gene_3UTR==cur_gene), ]
+  ## used mut rep1 here, but could use rep2 for equivalent results!
+  cur_orient_wt <- as.character(cur_wt$orientation_to_STOP)
+  cur_orient_mut <- as.character(cur_mut$orientation_to_STOP)
+  if(cur_orient_wt != cur_orient_mut){
+    mut_CHANGE_orient <- rbind(mut_CHANGE_orient, cur_gene)
+    
+  } else{
+    next
+    
+  }
+}
+
+print(paste("Consensus APA events from this study, wt/wt AND mut/mut dominant peaks are in the DIFFERENT orientations:", length(mut_CHANGE_orient), "out of", length(dataset_same_orient), "or", round(length(mut_CHANGE_orient)/length(dataset_same_orient)*100, 2), "%", sep=" "))
+
+mut_CHANGE_orient_out <- matrix(nrow=length(mut_CHANGE_orient), ncol=3)
+for(i in 1:length(mut_CHANGE_orient)){
+  cur_gene <- as.character(mut_CHANGE_orient[i])
+  cur_wt <- wt1_APA_int_output[which(wt1_APA_int_output$gene_3UTR==cur_gene), ]
+  ## used wt rep1 here, but could use rep2 for equivalent results!
+  cur_mut <- mut1_APA_int_output[which(mut1_APA_int_output$gene_3UTR==cur_gene), ]
+  ## used mut rep1 here, but could use rep2 for equivalent results!
+  cur_orient_wt <- as.character(cur_wt$orientation_to_STOP)
+  cur_orient_mut <- as.character(cur_mut$orientation_to_STOP)
+  mut_CHANGE_orient_out[i,1] <- cur_gene
+  mut_CHANGE_orient_out[i,2] <- cur_orient_wt
+  mut_CHANGE_orient_out[i,3] <- cur_orient_mut
+    
+}
+
+mut_CHANGE_orient_out <- data.frame(mut_CHANGE_orient_out, stringsAsFactors=FALSE)
+names(mut_CHANGE_orient_out) <- c("gene_3UTR", "orientation_to_STOP_in_wt", "orientation_to_STOP_in_mut")
+
+quant_prox <- as.numeric(length(which(mut_CHANGE_orient_out$orientation_to_STOP_in_mut=="proximal")))
+
+print(paste("Consensus APA events from this study, wt/wt AND mut/mut dominant peaks are in the DIFFERENT orientations AND mut peaks move PROXIMAL to the STOP codon:", quant_prox, "out of", length(mut_CHANGE_orient), "or", round(quant_prox/length(mut_CHANGE_orient)*100, 2), "%", sep=" "))
+
+
+
+all_int_this_study <- intersect(wt_int, mut_int)
+
+write.table(all_int_this_study, "./input_data/APAwtANDmut_940.txt", sep="\t", row.names=F, col.names=F, quote=F)
+
+write.table(mut_1x_int, "./input_data/APAwt_lostMut_193.txt", sep="\t", row.names=F, col.names=F, quote=F)
+
+write.table(wt_1x_int, "./input_data/APAmut_lostWT_123.txt", sep="\t", row.names=F, col.names=F, quote=F)
+
+write.table(mut_CHANGE_orient_out, "./input_data/APAwtANDmut_orientationCHANGE_155.txt", sep="\t", row.names=F, col.names=F, quote=F)
+
+```

@@ -1,0 +1,143 @@
+---
+title: "3' End Sequencing Part 1: Modify Neurospora crassa 3' UTR annotations to include FRQ poly(A)"
+author: "Tina Kelliher"
+date: "5/27/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+## install.packages("stringr")
+## install stringR into your session if you have not previously done so
+
+library(stringr)
+
+```
+
+## Read in the Neurospora crassa OR74A gene annotation file
+
+NC12 gene annotation file downloaded from FungiDB version 45: “FungiDB-45_NcrassaOR74A.gff”
+
+Accessed: 10/25/2019 by CMK (https://fungidb.org/fungidb/app/downloads/release-45/NcrassaOR74A/gff/data/)
+
+File Modifications: Opened file in TextWrangler and replaced space " " characters with underscore "_" to read into R properly –> 38,187 replacements
+
+```{r}
+
+gff <- as.data.frame(read.table("./input_data/FungiDB-45_NcrassaOR74A_rmSpaces.gff", stringsAsFactors=FALSE))
+
+```
+
+Goal: inspect the 3' untranslated region (UTR) annotations within the genome annotation
+
+Question: how many 3' UTRs overlap in the Neurospora transcriptome? The average reported distance between genes is 1,953 bps (Galagan et al, 2003, Nature, PMID: 12712197). The analysis goal for part 3 is to assign 3' end sequencing peaks to the correct gene's poly(A) tail. Here, we'd like to understand how many tail-to-tail genes with overlapping 3' ends exist in the genome.
+
+## Count how many 3' UTRs overlap in the GFF file
+
+```{r}
+
+gff_orig <- gff[which(gff$V3=="three_prime_UTR"), ]
+
+names(gff_orig) <- c("chr", "V2", "feature", "start", "end", "V6", "strand", "V8", "gene")
+
+UTR_length <- as.numeric(gff_orig$end) - as.numeric(gff_orig$start)
+
+labels <- str_extract(gff_orig$gene, paste("Parent=NCU", "[0-9]{5}", sep=""))
+labels_sub <- sub("Parent=", "", labels)
+
+gff_orig_2 <- as.data.frame(cbind(gff_orig, labels_sub, UTR_length))
+names(gff_orig_2) <- c("chr", "V2", "feature", "start", "end", "V6", "strand", "V8", "gene", "NCU", "length")
+
+gff_orig_sort <- gff_orig_2[order(as.numeric(gff_orig_2$length), decreasing=TRUE),]
+
+gff_orig_uniq <- gff_orig_sort[!duplicated(gff_orig_sort$NCU),]
+## keep ONLY the longest 3' UTR recorded for each unique gene ID
+
+gff_orig <- gff_orig_uniq[,1:9]
+gff_orig <- data.frame(gff_orig, stringsAsFactors=FALSE)
+
+gff_sort <- gff_orig[order(as.numeric(gff_orig$start)),]
+gff_sort <- gff_sort[order(gff_sort$chr),]
+
+chromosomes <- unique(gff_sort$chr)
+## the nested FOR loop below will loop over chromosomes (b/c coordinates [1 ... right arm] are re-used) and then over pairs of annotations to test overlap
+
+count_overlap <- 0
+
+for(i in 1:length(chromosomes)){
+  curr_annot <- gff_sort[gff_sort$chr == chromosomes[i], ]
+  ## subset the annotations by chromosome
+  for(k in 1:nrow(curr_annot)) {
+    if(k==as.numeric(nrow(curr_annot))){
+      ## specific case where the last gene annotated on a chromosome cannot overlap with any other gene downstream
+      count_overlap <- count_overlap
+      
+    } else{
+      geneA <- curr_annot[k, ]
+      geneB <- curr_annot[k+1, ]
+      geneA_end <- as.numeric(curr_annot[k, "end"])
+      geneB_start <- as.numeric(curr_annot[k+1, "start"])
+      geneB_end <- as.numeric(curr_annot[k+1, "end"])
+      if(geneA_end >= geneB_start && geneA_end <= geneB_end){
+        ## in other words, the end coordinate of geneA is contained within the boundaries of geneB, the two 3' UTRs overlap partially
+        count_overlap <- count_overlap + 1
+        
+      } else{
+        count_overlap <- count_overlap
+      }
+    }
+  }
+  print("chromosome done!")
+  
+}
+
+perc <- as.numeric(count_overlap) / nrow(gff_orig) * 100
+
+print(paste("Number of annotated 3' UTRs with partial overlap in original GFF = ", count_overlap, " out of ", nrow(gff_orig), " or ", round(perc,2), "%", sep=""))
+                      
+```
+
+## Generate a new GFF annotation file containing ONLY 3' UTRs to use in the analysis pipeline
+
+```{r}
+
+gff_new <- gff[which(gff$V3=="three_prime_UTR"), ]
+
+names(gff_new) <- c("chr", "V2", "feature", "start", "end", "V6", "strand", "V8", "gene")
+
+UTR_length <- as.numeric(gff_new$end) - as.numeric(gff_new$start)
+
+labels <- str_extract(gff_new$gene, paste("Parent=NCU", "[0-9]{5}", sep=""))
+labels_sub <- sub("Parent=", "", labels)
+
+gff_new_2 <- as.data.frame(cbind(gff_new, labels_sub, UTR_length))
+names(gff_new_2) <- c("chr", "V2", "feature", "start", "end", "V6", "strand", "V8", "gene", "NCU", "length")
+
+gff_new_sort <- gff_new_2[order(as.numeric(gff_new_2$length), decreasing=TRUE),]
+
+gff_new_uniq <- gff_new_sort[!duplicated(gff_new_sort$NCU),]
+## keep ONLY the longest 3' UTR recorded for each unique gene ID
+
+gff_final <- gff_new_uniq[,1:9]
+gff_final <- data.frame(gff_final, stringsAsFactors=FALSE)
+
+write.table(gff_final, "./input_data/FungiDB-45_NcrassaOR74A_3UTRs_7793.gff", quote=F, row.names=F, col.names=F, sep="\t")
+
+```
+
+## Manually add 450 bp to the frq 3' UTR for final version
+
+FRQ (NCU02265) poly(A) tail locations were found to be outside its annotated 3' UTR during visual inspection of the datasets. See manuscript Materials & Methods for full details.
+
+Manually edited final GFF file: "FungiDB-45_NcrassaOR74A_3UTRs_7793_final.gff"
+
+```{r}
+
+frq <- gff_new_uniq[which(gff_new_uniq$NCU == "NCU02265"), ]
+
+print(paste("frq 3' UTR starts at: ", frq$start, ", ends at: ", frq$end, ", and is located on the ", frq$strand, " strand", sep=""))
+
+print(paste("manually edit new end coordinate as: ", frq$end + 450, sep=""))
+
+```
