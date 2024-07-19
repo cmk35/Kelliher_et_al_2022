@@ -1,7 +1,13 @@
 # Kelliher_et_al_2022
 Custom ImageJ macro and R scripts used in Kelliher et al 2022
 
-### This code is associated with the 2022 manuscript: "A role for gene expression and mRNA stability in nutritional compensation of the circadian clock". bioRxiv preprint: https://doi.org/10.1101/2022.05.09.491261
+### This code is associated with the 2022 manuscript: "A role for gene expression and mRNA stability in nutritional compensation of the circadian clock". 
+
+pubmed link: https://pubmed.ncbi.nlm.nih.gov/36603054/
+
+PLoS Biology publication: https://doi.org/10.1371/journal.pbio.3001961
+
+bioRxiv preprint: https://www.biorxiv.org/content/10.1101/2022.05.09.491261v2
 
 ## To analyze Princeton Instruments .spe files, use the "ImageJ Macros" directory
 
@@ -166,3 +172,5 @@ Written tutorial for the "oldTissue_growth_front_tracking_macro.txt" Macro
     Close the SPE file and repeat for the next race tube (manually re-naming each Result file as needed)
     
 Once all 12x race tubes from a given run are analyzed invidually, use the two R scripts: "runMult_RT_slice_avgs_grFront_v3.R" which calls "RaceTube_Slice_Averages_grFront_v3.R" to background-correct and concatenate all race tubes together into one Results file
+
+## To analyze 3' End Seq data, use the "custom 3' end Seq" directory
