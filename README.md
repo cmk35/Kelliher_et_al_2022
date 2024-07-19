@@ -13,7 +13,11 @@ bioRxiv preprint: https://www.biorxiv.org/content/10.1101/2022.05.09.491261v2
 
 A sample dataset is included: "2020-06-05_run 2020 June 12 03_17_19 150.spe"
 
-Please download the input data file from Google Drive: https://drive.google.com/drive/folders/1hdB1eWsTfNJr_K98bRY17Umur4HA5NPJ?usp=sharing
+### input dataset to analyze Princeton Instruments camera data have MOVED from Google Drive (Dartmouth) to OneDrive (UMass Boston) as of 2023
+
+Please download the input data file from this OneDrive shared link: https://liveumb-my.sharepoint.com/:f:/g/personal/christina_kelliher_umb_edu/EokwgBHPdllHsY6ALm02IwcBYZA8RccuNH_Jq-DvdzywAA?e=m6q0jK
+
+~~Please download the input data file from Google Drive: https://drive.google.com/drive/folders/1hdB1eWsTfNJr_K98bRY17Umur4HA5NPJ?usp=sharing~~
 
     Experiment strain # 1785-1: Neurospora crassa OR74A, FGSC2489, csr-1::frqCBoxp-luciferase::barR
     Experiment date: 2020-06-05 to 2020-06-12
@@ -174,3 +178,5 @@ Written tutorial for the "oldTissue_growth_front_tracking_macro.txt" Macro
 Once all 12x race tubes from a given run are analyzed invidually, use the two R scripts: "runMult_RT_slice_avgs_grFront_v3.R" which calls "RaceTube_Slice_Averages_grFront_v3.R" to background-correct and concatenate all race tubes together into one Results file
 
 ## To analyze 3' End Seq data, use the "custom 3' end Seq" directory
+
+### questions? email Tina Kelliher at: christina.kelliher@umb.edu
